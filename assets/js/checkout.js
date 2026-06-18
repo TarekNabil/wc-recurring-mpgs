@@ -1,15 +1,15 @@
 (function () {
-    if (typeof window.Checkout === 'undefined' || typeof window.mpfwCheckoutConfig === 'undefined') {
+    if (typeof window.Checkout === 'undefined' || typeof window.wcrmpgsCheckoutConfig === 'undefined') {
         return;
     }
 
-    if (!window.mpfwCheckoutConfig.sessionId) {
+    if (!window.wcrmpgsCheckoutConfig.sessionId) {
         return;
     }
 
     window.Checkout.configure({
         session: {
-            id: window.mpfwCheckoutConfig.sessionId,
+            id: window.wcrmpgsCheckoutConfig.sessionId,
         },
     });
 

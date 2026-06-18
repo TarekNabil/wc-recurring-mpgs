@@ -3,7 +3,7 @@
 /**
  * WooCommerce Blocks support.
  *
- * @package MPFW
+ * @package WCRMPGS
  */
 
 if ( ! defined( 'ABSPATH' ) ) {
@@ -15,7 +15,7 @@ use Automattic\WooCommerce\Blocks\Payments\Integrations\AbstractPaymentMethodTyp
 /**
  * Checkout block adapter for the merchant gateway.
  */
-final class MPFW_Blocks_Support extends AbstractPaymentMethodType {
+final class WCRMPGS_Blocks_Support extends AbstractPaymentMethodType {
 
     /**
      * Payment method id.
@@ -49,14 +49,14 @@ final class MPFW_Blocks_Support extends AbstractPaymentMethodType {
      */
     public function get_payment_method_script_handles() {
         wp_register_script(
-            'mpfw-blocks-integration',
-            MPFW_PLUGIN_URL . 'assets/js/checkout.js',
+            'wcrmpgs-blocks-integration',
+            WCRMPGS_PLUGIN_URL . 'assets/js/checkout.js',
             array( 'wc-blocks-registry', 'wc-settings', 'wp-element', 'wp-html-entities' ),
-            MPFW_VERSION,
+            WCRMPGS_VERSION,
             true
         );
 
-        return array( 'mpfw-blocks-integration' );
+        return array( 'wcrmpgs-blocks-integration' );
     }
 
     /**
@@ -66,7 +66,7 @@ final class MPFW_Blocks_Support extends AbstractPaymentMethodType {
      */
     public function get_payment_method_data() {
         return array(
-            'title'       => $this->settings['title'] ?? __( 'Credit Card', 'merchant-payments-for-woocommerce' ),
+            'title'       => $this->settings['title'] ?? __( 'Credit Card', 'wc-recurring-mpgs' ),
             'description' => $this->settings['description'] ?? '',
             'supports'    => $this->get_supported_features(),
         );

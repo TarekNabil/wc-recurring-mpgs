@@ -3,7 +3,7 @@
 /**
  * Uninstall hook.
  *
- * @package MPFW
+ * @package WCRMPGS
  */
 
 if ( ! defined( 'WP_UNINSTALL_PLUGIN' ) ) {

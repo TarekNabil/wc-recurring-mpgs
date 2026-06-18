@@ -3,7 +3,7 @@
 /**
  * Gateway API transport helpers.
  *
- * @package MPFW
+ * @package WCRMPGS
  */
 
 if ( ! defined( 'ABSPATH' ) ) {
@@ -13,7 +13,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 /**
  * Thin wrapper around the current gateway REST API.
  */
-class MPFW_Api_Client {
+class WCRMPGS_Api_Client {
 
     /**
      * Service host.

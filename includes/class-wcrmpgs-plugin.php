@@ -3,7 +3,7 @@
 /**
  * Plugin bootstrap.
  *
- * @package MPFW
+ * @package WCRMPGS
  */
 
 if ( ! defined( 'ABSPATH' ) ) {
@@ -13,19 +13,19 @@ if ( ! defined( 'ABSPATH' ) ) {
 /**
  * Bootstraps the plugin and integration entry points.
  */
-final class MPFW_Plugin {
+final class WCRMPGS_Plugin {
 
     /**
      * Singleton instance.
      *
-    * @var MPFW_Plugin|null
+    * @var WCRMPGS_Plugin|null
      */
     private static $instance = null;
 
     /**
      * Returns the singleton instance.
      *
-    * @return MPFW_Plugin
+    * @return WCRMPGS_Plugin
      */
     public static function instance() {
         if ( null === self::$instance ) {
@@ -46,9 +46,9 @@ final class MPFW_Plugin {
             return;
         }
 
-        require_once MPFW_PLUGIN_DIR . 'includes/class-mpfw-api-client.php';
-        require_once MPFW_PLUGIN_DIR . 'includes/class-mpfw-hosted-checkout-service.php';
-        require_once MPFW_PLUGIN_DIR . 'includes/class-mpfw-gateway.php';
+        require_once WCRMPGS_PLUGIN_DIR . 'includes/class-wcrmpgs-api-client.php';
+        require_once WCRMPGS_PLUGIN_DIR . 'includes/class-wcrmpgs-hosted-checkout-service.php';
+        require_once WCRMPGS_PLUGIN_DIR . 'includes/class-wcrmpgs-gateway.php';
 
         add_filter( 'woocommerce_payment_gateways', array( $this, 'register_gateway' ) );
         add_action( 'woocommerce_blocks_loaded', array( $this, 'register_blocks_support' ) );
@@ -61,7 +61,7 @@ final class MPFW_Plugin {
      * @return array
      */
     public function register_gateway( $gateways ) {
-        $gateways[] = 'MPFW_Gateway';
+        $gateways[] = 'WCRMPGS_Gateway';
         return $gateways;
     }
 
@@ -75,12 +75,12 @@ final class MPFW_Plugin {
             return;
         }
 
-        require_once MPFW_PLUGIN_DIR . 'includes/class-mpfw-blocks-support.php';
+        require_once WCRMPGS_PLUGIN_DIR . 'includes/class-wcrmpgs-blocks-support.php';
 
         add_action(
             'woocommerce_blocks_payment_method_type_registration',
             static function ( $registry ) {
-                $registry->register( new MPFW_Blocks_Support() );
+                $registry->register( new WCRMPGS_Blocks_Support() );
             }
         );
     }
@@ -94,7 +94,7 @@ final class MPFW_Plugin {
         ?>
         <div class="notice notice-error">
             <p>
-                <?php esc_html_e( 'Merchant Payments for WooCommerce requires WooCommerce to be installed and active.', 'merchant-payments-for-woocommerce' ); ?>
+                <?php esc_html_e( 'WC Recurring MPGS requires WooCommerce to be installed and active.', 'wc-recurring-mpgs' ); ?>
             </p>
         </div>
         <?php

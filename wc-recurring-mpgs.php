@@ -1,14 +1,14 @@
 <?php
 
 /**
- * Plugin Name: Merchant Payments for WooCommerce
+ * Plugin Name: WC Recurring MPGS
  * Plugin URI: https://example.com/
- * Description: Provider-neutral hosted checkout and recurring payments foundation for WooCommerce.
+ * Description: WC Recurring MPGS (MasterCard Payment Gateway Services for WooCommerce) with hosted checkout and recurring payments foundation.
  * Version: 0.1.0
  * Author: Tarek
  * License: GPL v2 or later
  * License URI: https://www.gnu.org/licenses/gpl-2.0.html
- * Text Domain: merchant-payments-for-woocommerce
+ * Text Domain: wc-recurring-mpgs
  * Domain Path: /languages
  * Requires at least: 6.0
  * Requires PHP: 7.4
@@ -16,17 +16,17 @@
  * WC tested up to: 10.0
  * Requires Plugins: woocommerce
  *
- * @package MPFW
+ * @package WCRMPGS
  */
 
 if ( ! defined( 'ABSPATH' ) ) {
     exit;
 }
 
-define( 'MPFW_VERSION', '0.1.0' );
-define( 'MPFW_PLUGIN_FILE', __FILE__ );
-define( 'MPFW_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
-define( 'MPFW_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
+define( 'WCRMPGS_VERSION', '0.1.0' );
+define( 'WCRMPGS_PLUGIN_FILE', __FILE__ );
+define( 'WCRMPGS_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
+define( 'WCRMPGS_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 
 add_action(
     'before_woocommerce_init',
@@ -38,11 +38,11 @@ add_action(
     }
 );
 
-require_once MPFW_PLUGIN_DIR . 'includes/class-mpfw-plugin.php';
+require_once WCRMPGS_PLUGIN_DIR . 'includes/class-wcrmpgs-plugin.php';
 
 add_action(
     'plugins_loaded',
     static function () {
-        MPFW_Plugin::instance()->boot();
+        WCRMPGS_Plugin::instance()->boot();
     }
 );

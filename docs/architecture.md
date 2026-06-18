@@ -1,4 +1,4 @@
-# Merchant Payments for WooCommerce Architecture
+# WC Recurring MPGS Architecture
 
 ## Goal
 
@@ -19,21 +19,21 @@ This replacement plugin is provider-neutral by design. The first connector is be
 ## Planned Structure
 
 ```text
-merchant-payments-for-woocommerce/
-  merchant-payments-for-woocommerce.php
+wc-recurring-mpgs/
+  wc-recurring-mpgs.php
   uninstall.php
   assets/
     js/
   docs/
   includes/
-    class-mpfw-plugin.php
-    class-mpfw-gateway.php
-    class-mpfw-api-client.php
-    class-mpfw-hosted-checkout-service.php
-    class-mpfw-recurring-service.php
-    class-mpfw-webhook-controller.php
-    class-mpfw-subscriptions-adapter.php
-    class-mpfw-order-meta.php
+    class-wcrmpgs-plugin.php
+    class-wcrmpgs-gateway.php
+    class-wcrmpgs-api-client.php
+    class-wcrmpgs-hosted-checkout-service.php
+    class-wcrmpgs-recurring-service.php
+    class-wcrmpgs-webhook-controller.php
+    class-wcrmpgs-subscriptions-adapter.php
+    class-wcrmpgs-order-meta.php
 ```
 
 ## Delivery Phases

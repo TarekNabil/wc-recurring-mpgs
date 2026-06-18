@@ -3,7 +3,7 @@
 /**
  * Hosted checkout request builder.
  *
- * @package MPFW
+ * @package WCRMPGS
  */
 
 if ( ! defined( 'ABSPATH' ) ) {
@@ -13,12 +13,12 @@ if ( ! defined( 'ABSPATH' ) ) {
 /**
  * Builds initial CIT checkout payloads.
  */
-class MPFW_Hosted_Checkout_Service {
+class WCRMPGS_Hosted_Checkout_Service {
 
     /**
      * API client.
      *
-    * @var MPFW_Api_Client
+    * @var WCRMPGS_Api_Client
      */
     private $api_client;
 
@@ -32,10 +32,10 @@ class MPFW_Hosted_Checkout_Service {
     /**
      * Constructor.
      *
-    * @param MPFW_Api_Client $api_client API client.
+    * @param WCRMPGS_Api_Client $api_client API client.
      * @param array           $settings Gateway settings.
      */
-    public function __construct( MPFW_Api_Client $api_client, array $settings ) {
+    public function __construct( WCRMPGS_Api_Client $api_client, array $settings ) {
         $this->api_client = $api_client;
         $this->settings   = $settings;
     }
@@ -56,7 +56,7 @@ class MPFW_Hosted_Checkout_Service {
                 'id'                => (string) $order_id,
                 'amount'            => number_format( (float) $order->get_total(), 2, '.', '' ),
                 'currency'          => $order->get_currency(),
-                'description'       => sprintf( __( 'Pay for order #%d', 'merchant-payments-for-woocommerce' ), $order_id ),
+                'description'       => sprintf( __( 'Pay for order #%d', 'wc-recurring-mpgs' ), $order_id ),
                 'reference'         => (string) $order_id,
                 'customerOrderDate' => gmdate( 'Y-m-d' ),
             ),
@@ -64,9 +64,9 @@ class MPFW_Hosted_Checkout_Service {
                 'operation' => 'PURCHASE',
                 'returnUrl' => add_query_arg(
                     array(
-                        'wc-api'     => 'mpfw_gateway',
+                        'wc-api'     => 'wcrmpgs_gateway',
                         'order_id'   => $order_id,
-                        'mpfw_nonce' => wp_create_nonce( 'mpfw_process_response' ),
+                        'wcrmpgs_nonce' => wp_create_nonce( 'wcrmpgs_process_response' ),
                     ),
                     home_url( '/' )
                 ),
@@ -102,7 +102,7 @@ class MPFW_Hosted_Checkout_Service {
             );
         }
 
-        return apply_filters( 'mpfw_checkout_session_request', $payload, $order, $this->settings );
+        return apply_filters( 'wcrmpgs_checkout_session_request', $payload, $order, $this->settings );
     }
 
     /**

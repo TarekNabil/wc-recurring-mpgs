@@ -3,7 +3,7 @@
 /**
  * WooCommerce gateway implementation.
  *
- * @package MPFW
+ * @package WCRMPGS
  */
 
 if ( ! defined( 'ABSPATH' ) ) {
@@ -13,7 +13,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 /**
  * Main WooCommerce gateway class.
  */
-class MPFW_Gateway extends WC_Payment_Gateway {
+class WCRMPGS_Gateway extends WC_Payment_Gateway {
 
     /**
      * Debug logging flag.
@@ -34,11 +34,11 @@ class MPFW_Gateway extends WC_Payment_Gateway {
      */
     public function __construct() {
         $this->id                 = 'merchant_payments';
-        $this->method_title       = __( 'Merchant Payments', 'merchant-payments-for-woocommerce' );
-        $this->method_description = __( 'Hosted checkout and recurring payments foundation.', 'merchant-payments-for-woocommerce' );
+        $this->method_title       = __( 'WC Recurring MPGS', 'wc-recurring-mpgs' );
+        $this->method_description = __( 'MasterCard Payment Gateway Services for WooCommerce with hosted checkout and recurring payments foundation.', 'wc-recurring-mpgs' );
         $this->has_fields         = false;
         $this->supports           = array( 'products', 'refunds' );
-        $this->icon               = apply_filters( 'mpfw_icon', '' );
+        $this->icon               = apply_filters( 'wcrmpgs_icon', '' );
 
         $this->init_form_fields();
         $this->init_settings();
@@ -52,7 +52,7 @@ class MPFW_Gateway extends WC_Payment_Gateway {
         add_action( 'woocommerce_update_options_payment_gateways_' . $this->id, array( $this, 'process_admin_options' ) );
         add_action( 'woocommerce_receipt_' . $this->id, array( $this, 'receipt_page' ) );
         add_action( 'wp_enqueue_scripts', array( $this, 'payment_scripts' ) );
-        add_action( 'woocommerce_api_mpfw_gateway', array( $this, 'process_response' ) );
+        add_action( 'woocommerce_api_wcrmpgs_gateway', array( $this, 'process_response' ) );
     }
 
     /**
@@ -63,85 +63,85 @@ class MPFW_Gateway extends WC_Payment_Gateway {
     public function init_form_fields() {
         $this->form_fields = array(
             'enabled'               => array(
-                'title'   => __( 'Enable/Disable', 'merchant-payments-for-woocommerce' ),
+                'title'   => __( 'Enable/Disable', 'wc-recurring-mpgs' ),
                 'type'    => 'checkbox',
-                'label'   => __( 'Enable Merchant Payments', 'merchant-payments-for-woocommerce' ),
+                'label'   => __( 'Enable WC Recurring MPGS', 'wc-recurring-mpgs' ),
                 'default' => 'no',
             ),
             'title'                 => array(
-                'title'       => __( 'Title', 'merchant-payments-for-woocommerce' ),
+                'title'       => __( 'Title', 'wc-recurring-mpgs' ),
                 'type'        => 'text',
-                'default'     => __( 'Credit Card', 'merchant-payments-for-woocommerce' ),
+                'default'     => __( 'WC Recurring MPGS Card', 'wc-recurring-mpgs' ),
                 'desc_tip'    => true,
-                'description' => __( 'Title shown to customers during checkout.', 'merchant-payments-for-woocommerce' ),
+                'description' => __( 'Title shown to customers during checkout.', 'wc-recurring-mpgs' ),
             ),
             'description'           => array(
-                'title'       => __( 'Description', 'merchant-payments-for-woocommerce' ),
+                'title'       => __( 'Description', 'wc-recurring-mpgs' ),
                 'type'        => 'textarea',
-                'default'     => __( 'Pay securely through the hosted checkout page.', 'merchant-payments-for-woocommerce' ),
+                'default'     => __( 'Pay securely through the hosted checkout page.', 'wc-recurring-mpgs' ),
                 'desc_tip'    => true,
-                'description' => __( 'Description shown to customers during checkout.', 'merchant-payments-for-woocommerce' ),
+                'description' => __( 'Description shown to customers during checkout.', 'wc-recurring-mpgs' ),
             ),
             'debug_mode'            => array(
-                'title'       => __( 'Debug Log', 'merchant-payments-for-woocommerce' ),
+                'title'       => __( 'Debug Log', 'wc-recurring-mpgs' ),
                 'type'        => 'checkbox',
-                'label'       => __( 'Enable debug logging', 'merchant-payments-for-woocommerce' ),
+                'label'       => __( 'Enable debug logging', 'wc-recurring-mpgs' ),
                 'default'     => 'no',
-                'description' => __( 'Log gateway activity to WooCommerce logs.', 'merchant-payments-for-woocommerce' ),
+                'description' => __( 'Log gateway activity to WooCommerce logs.', 'wc-recurring-mpgs' ),
             ),
             'service_host'          => array(
-                'title'       => __( 'Service Host', 'merchant-payments-for-woocommerce' ),
+                'title'       => __( 'Service Host', 'wc-recurring-mpgs' ),
                 'type'        => 'text',
                 'default'     => '',
                 'desc_tip'    => true,
-                'description' => __( 'Base gateway host URL, including a trailing slash.', 'merchant-payments-for-woocommerce' ),
+                'description' => __( 'Base gateway host URL, including a trailing slash.', 'wc-recurring-mpgs' ),
             ),
             'merchant_id'           => array(
-                'title'       => __( 'Merchant ID', 'merchant-payments-for-woocommerce' ),
+                'title'       => __( 'Merchant ID', 'wc-recurring-mpgs' ),
                 'type'        => 'text',
                 'default'     => '',
-                'description' => __( 'Merchant identifier provided by the active payment provider.', 'merchant-payments-for-woocommerce' ),
+                'description' => __( 'Merchant identifier provided by the active payment provider.', 'wc-recurring-mpgs' ),
             ),
             'authentication_password' => array(
-                'title'       => __( 'API Password', 'merchant-payments-for-woocommerce' ),
+                'title'       => __( 'API Password', 'wc-recurring-mpgs' ),
                 'type'        => 'password',
                 'default'     => '',
-                'description' => __( 'Integration API password generated in the provider portal.', 'merchant-payments-for-woocommerce' ),
+                'description' => __( 'Integration API password generated in the provider portal.', 'wc-recurring-mpgs' ),
             ),
             'checkout_api_version'  => array(
-                'title'       => __( 'Checkout API Version', 'merchant-payments-for-woocommerce' ),
+                'title'       => __( 'Checkout API Version', 'wc-recurring-mpgs' ),
                 'type'        => 'text',
                 'default'     => '100',
-                'description' => __( 'API version for hosted checkout CIT flows.', 'merchant-payments-for-woocommerce' ),
+                'description' => __( 'API version for hosted checkout CIT flows.', 'wc-recurring-mpgs' ),
             ),
             'recurring_api_version' => array(
-                'title'       => __( 'Recurring API Version', 'merchant-payments-for-woocommerce' ),
+                'title'       => __( 'Recurring API Version', 'wc-recurring-mpgs' ),
                 'type'        => 'text',
                 'default'     => '100',
-                'description' => __( 'API version for MIT recurring charges.', 'merchant-payments-for-woocommerce' ),
+                'description' => __( 'API version for MIT recurring charges.', 'wc-recurring-mpgs' ),
             ),
             'merchant_name'         => array(
-                'title'       => __( 'Merchant Name', 'merchant-payments-for-woocommerce' ),
+                'title'       => __( 'Merchant Name', 'wc-recurring-mpgs' ),
                 'type'        => 'text',
                 'default'     => '',
-                'description' => __( 'Merchant name shown on hosted checkout.', 'merchant-payments-for-woocommerce' ),
+                'description' => __( 'Merchant name shown on hosted checkout.', 'wc-recurring-mpgs' ),
             ),
             'merchant_address1'     => array(
-                'title'       => __( 'Merchant Address Line 1', 'merchant-payments-for-woocommerce' ),
+                'title'       => __( 'Merchant Address Line 1', 'wc-recurring-mpgs' ),
                 'type'        => 'text',
                 'default'     => '',
             ),
             'merchant_address2'     => array(
-                'title'       => __( 'Merchant Address Line 2', 'merchant-payments-for-woocommerce' ),
+                'title'       => __( 'Merchant Address Line 2', 'wc-recurring-mpgs' ),
                 'type'        => 'text',
                 'default'     => '',
             ),
             'recurring_enabled'     => array(
-                'title'       => __( 'Recurring Payments', 'merchant-payments-for-woocommerce' ),
+                'title'       => __( 'Recurring Payments', 'wc-recurring-mpgs' ),
                 'type'        => 'checkbox',
-                'label'       => __( 'Enable recurring architecture scaffolding', 'merchant-payments-for-woocommerce' ),
+                'label'       => __( 'Enable recurring architecture scaffolding', 'wc-recurring-mpgs' ),
                 'default'     => 'no',
-                'description' => __( 'This only enables the new recurring configuration path. Actual MIT charging is not implemented in this first scaffold.', 'merchant-payments-for-woocommerce' ),
+                'description' => __( 'This only enables the new recurring configuration path. Actual MIT charging is not implemented in this first scaffold.', 'wc-recurring-mpgs' ),
             ),
         );
     }
@@ -167,16 +167,16 @@ class MPFW_Gateway extends WC_Payment_Gateway {
         }
 
         wp_enqueue_script(
-            'mpfw-hosted-checkout',
-            MPFW_PLUGIN_URL . 'assets/js/checkout.js',
+            'wcrmpgs-hosted-checkout',
+            WCRMPGS_PLUGIN_URL . 'assets/js/checkout.js',
             array(),
-            MPFW_VERSION,
+            WCRMPGS_VERSION,
             true
         );
 
         wp_localize_script(
-            'mpfw-hosted-checkout',
-            'mpfwCheckoutConfig',
+            'wcrmpgs-hosted-checkout',
+            'wcrmpgsCheckoutConfig',
             array(
                 'sessionId' => $session_id,
             )
@@ -193,12 +193,12 @@ class MPFW_Gateway extends WC_Payment_Gateway {
         $order = wc_get_order( $order_id );
 
         if ( ! $order ) {
-            wc_add_notice( __( 'Invalid order.', 'merchant-payments-for-woocommerce' ), 'error' );
+            wc_add_notice( __( 'Invalid order.', 'wc-recurring-mpgs' ), 'error' );
             return array( 'result' => 'failure' );
         }
 
         if ( ! $this->has_required_credentials() ) {
-            wc_add_notice( __( 'Gateway credentials are incomplete.', 'merchant-payments-for-woocommerce' ), 'error' );
+            wc_add_notice( __( 'Gateway credentials are incomplete.', 'wc-recurring-mpgs' ), 'error' );
             return array( 'result' => 'failure' );
         }
 
@@ -206,21 +206,21 @@ class MPFW_Gateway extends WC_Payment_Gateway {
 
         if ( is_wp_error( $response ) ) {
             $this->log( 'Hosted checkout session creation failed: ' . $response->get_error_message(), 'error' );
-            wc_add_notice( __( 'Failed to create the hosted checkout session.', 'merchant-payments-for-woocommerce' ), 'error' );
+            wc_add_notice( __( 'Failed to create the hosted checkout session.', 'wc-recurring-mpgs' ), 'error' );
             return array( 'result' => 'failure' );
         }
 
         $body = json_decode( wp_remote_retrieve_body( $response ), true );
 
         if ( ! is_array( $body ) || 'SUCCESS' !== ( $body['result'] ?? '' ) || empty( $body['session']['id'] ) ) {
-            $message = $body['error']['explanation'] ?? __( 'Unexpected gateway response.', 'merchant-payments-for-woocommerce' );
+            $message = $body['error']['explanation'] ?? __( 'Unexpected gateway response.', 'wc-recurring-mpgs' );
             $this->log( 'Hosted checkout session rejected: ' . wp_json_encode( $body ), 'error' );
             wc_add_notice( $message, 'error' );
             return array( 'result' => 'failure' );
         }
 
-        $order->update_meta_data( '_mpfw_success_indicator', $body['successIndicator'] ?? '' );
-        $order->update_meta_data( '_mpfw_session_version', $body['session']['version'] ?? '' );
+        $order->update_meta_data( '_wcrmpgs_success_indicator', $body['successIndicator'] ?? '' );
+        $order->update_meta_data( '_wcrmpgs_session_version', $body['session']['version'] ?? '' );
         $order->save();
 
         return array(
@@ -241,7 +241,7 @@ class MPFW_Gateway extends WC_Payment_Gateway {
      * @return void
      */
     public function process_response() {
-        wp_die( esc_html__( 'Gateway callback handling is not implemented in this scaffold yet.', 'merchant-payments-for-woocommerce' ) );
+        wp_die( esc_html__( 'Gateway callback handling is not implemented in this scaffold yet.', 'wc-recurring-mpgs' ) );
     }
 
     /**
@@ -254,8 +254,8 @@ class MPFW_Gateway extends WC_Payment_Gateway {
      */
     public function process_refund( $order_id, $amount = null, $reason = '' ) {
         return new WP_Error(
-            'mpfw_refund_not_implemented',
-            __( 'Refund support is not implemented in this scaffold yet.', 'merchant-payments-for-woocommerce' )
+            'wcrmpgs_refund_not_implemented',
+            __( 'Refund support is not implemented in this scaffold yet.', 'wc-recurring-mpgs' )
         );
     }
 
@@ -267,11 +267,11 @@ class MPFW_Gateway extends WC_Payment_Gateway {
      */
     public function receipt_page( $order_id ) {
         if ( empty( $_GET['sessionId'] ) ) {
-            wc_add_notice( __( 'Payment session not found.', 'merchant-payments-for-woocommerce' ), 'error' );
+            wc_add_notice( __( 'Payment session not found.', 'wc-recurring-mpgs' ), 'error' );
             return;
         }
 
-        echo '<p>' . esc_html__( 'Redirecting to the hosted checkout page.', 'merchant-payments-for-woocommerce' ) . '</p>';
+        echo '<p>' . esc_html__( 'Redirecting to the hosted checkout page.', 'wc-recurring-mpgs' ) . '</p>';
     }
 
     /**
@@ -286,11 +286,11 @@ class MPFW_Gateway extends WC_Payment_Gateway {
     /**
      * Build the hosted checkout service.
      *
-    * @return MPFW_Hosted_Checkout_Service
+    * @return WCRMPGS_Hosted_Checkout_Service
      */
     protected function get_hosted_checkout_service() {
-        return new MPFW_Hosted_Checkout_Service(
-            new MPFW_Api_Client(
+        return new WCRMPGS_Hosted_Checkout_Service(
+            new WCRMPGS_Api_Client(
                 $this->get_option( 'service_host' ),
                 $this->get_option( 'merchant_id' ),
                 $this->get_option( 'authentication_password' )
@@ -313,7 +313,7 @@ class MPFW_Gateway extends WC_Payment_Gateway {
      */
     protected function log( $message, $level = 'info' ) {
         if ( $this->debug_mode && $this->logger ) {
-            $this->logger->log( $level, $message, array( 'source' => 'merchant-payments-for-woocommerce' ) );
+            $this->logger->log( $level, $message, array( 'source' => 'wc-recurring-mpgs' ) );
         }
     }
 }
