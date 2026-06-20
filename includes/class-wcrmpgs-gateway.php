@@ -198,6 +198,7 @@ class WCRMPGS_Gateway extends WC_Payment_Gateway {
         }
 
         if ( ! $this->has_required_credentials() ) {
+            $order->add_order_note( __( 'MPGS checkout session failed: gateway credentials are incomplete.', 'wc-recurring-mpgs' ) );
             wc_add_notice( __( 'Gateway credentials are incomplete.', 'wc-recurring-mpgs' ), 'error' );
             return array( 'result' => 'failure' );
         }
@@ -206,6 +207,7 @@ class WCRMPGS_Gateway extends WC_Payment_Gateway {
 
         if ( is_wp_error( $response ) ) {
             $this->log( 'Hosted checkout session creation failed: ' . $response->get_error_message(), 'error' );
+            $order->add_order_note( __( 'MPGS checkout session could not be created. See gateway logs for details.', 'wc-recurring-mpgs' ) );
             wc_add_notice( __( 'Failed to create the hosted checkout session.', 'wc-recurring-mpgs' ), 'error' );
             return array( 'result' => 'failure' );
         }
@@ -215,6 +217,7 @@ class WCRMPGS_Gateway extends WC_Payment_Gateway {
         if ( ! is_array( $body ) || 'SUCCESS' !== ( $body['result'] ?? '' ) || empty( $body['session']['id'] ) ) {
             $message = $body['error']['explanation'] ?? __( 'Unexpected gateway response.', 'wc-recurring-mpgs' );
             $this->log( 'Hosted checkout session rejected: ' . wp_json_encode( $body ), 'error' );
+            $order->add_order_note( sprintf( __( 'MPGS checkout session rejected: %s', 'wc-recurring-mpgs' ), wp_strip_all_tags( (string) $message ) ) );
             wc_add_notice( $message, 'error' );
             return array( 'result' => 'failure' );
         }
@@ -222,6 +225,7 @@ class WCRMPGS_Gateway extends WC_Payment_Gateway {
         $order->update_meta_data( '_wcrmpgs_success_indicator', $body['successIndicator'] ?? '' );
         $order->update_meta_data( '_wcrmpgs_session_id', $body['session']['id'] ?? '' );
         $order->update_meta_data( '_wcrmpgs_session_version', $body['session']['version'] ?? '' );
+        $order->add_order_note( sprintf( __( 'MPGS checkout session created successfully. Session ID: %s', 'wc-recurring-mpgs' ), $body['session']['id'] ) );
         $order->save();
 
         return array(
@@ -338,18 +342,94 @@ class WCRMPGS_Gateway extends WC_Payment_Gateway {
     }
 
     /**
-     * Placeholder refund handler.
+     * Process refund/void request through provider API.
      *
      * @param int        $order_id Order ID.
      * @param float|null $amount Refund amount.
      * @param string     $reason Reason.
-     * @return WP_Error
+     * @return bool|WP_Error
      */
     public function process_refund( $order_id, $amount = null, $reason = '' ) {
-        return new WP_Error(
-            'wcrmpgs_refund_not_implemented',
-            __( 'Refund support is not implemented in this scaffold yet.', 'wc-recurring-mpgs' )
+        $order = wc_get_order( $order_id );
+
+        if ( ! $order ) {
+            return new WP_Error( 'wcrmpgs_refund_invalid_order', __( 'Invalid order.', 'wc-recurring-mpgs' ) );
+        }
+
+        if ( ! $this->has_required_credentials() ) {
+            $order->add_order_note( __( 'MPGS refund failed: gateway credentials are incomplete.', 'wc-recurring-mpgs' ) );
+            return new WP_Error( 'wcrmpgs_refund_missing_credentials', __( 'Gateway credentials are incomplete.', 'wc-recurring-mpgs' ) );
+        }
+
+        $refund_amount = null === $amount ? (float) $order->get_total() : (float) $amount;
+
+        if ( $refund_amount <= 0 ) {
+            $order->add_order_note( __( 'MPGS refund failed: invalid refund amount.', 'wc-recurring-mpgs' ) );
+            return new WP_Error( 'wcrmpgs_refund_invalid_amount', __( 'Refund amount must be greater than zero.', 'wc-recurring-mpgs' ) );
+        }
+
+        $transaction_id = (string) $order->get_transaction_id();
+
+        if ( ! $transaction_id ) {
+            $transaction_id = (string) $order->get_meta( '_wcrmpgs_transaction_id', true );
+        }
+
+        if ( ! $transaction_id ) {
+            $order->add_order_note( __( 'MPGS refund failed: missing original transaction ID.', 'wc-recurring-mpgs' ) );
+            return new WP_Error( 'wcrmpgs_refund_missing_transaction', __( 'Original transaction ID is missing.', 'wc-recurring-mpgs' ) );
+        }
+
+        $operation = strtoupper( (string) apply_filters( 'wcrmpgs_refund_operation', 'REFUND', $order, $refund_amount, $reason ) );
+        if ( ! in_array( $operation, array( 'REFUND', 'VOID' ), true ) ) {
+            $operation = 'REFUND';
+        }
+
+        $response = $this->send_refund_request( $order, $transaction_id, $refund_amount, $reason, $operation );
+
+        if ( is_wp_error( $response ) ) {
+            $this->log( 'MPGS ' . strtolower( $operation ) . ' request failed for order ' . $order->get_id() . ': ' . $response->get_error_message(), 'error' );
+            $order->add_order_note( sprintf( __( 'MPGS %1$s request failed: %2$s', 'wc-recurring-mpgs' ), strtolower( $operation ), $response->get_error_message() ) );
+            return $response;
+        }
+
+        $body = json_decode( wp_remote_retrieve_body( $response ), true );
+
+        if ( ! is_array( $body ) ) {
+            $order->add_order_note( sprintf( __( 'MPGS %s request failed: invalid provider response.', 'wc-recurring-mpgs' ), strtolower( $operation ) ) );
+            return new WP_Error( 'wcrmpgs_refund_invalid_response', __( 'Invalid refund response from provider.', 'wc-recurring-mpgs' ) );
+        }
+
+        $result = strtoupper( (string) ( $body['result'] ?? '' ) );
+
+        if ( 'SUCCESS' !== $result ) {
+            $provider_message = $body['error']['explanation'] ?? __( 'Provider rejected the request.', 'wc-recurring-mpgs' );
+            $safe_message     = wp_strip_all_tags( (string) $provider_message );
+
+            $this->log( 'MPGS ' . strtolower( $operation ) . ' rejected for order ' . $order->get_id() . ': ' . wp_json_encode( $body ), 'warning' );
+            $order->add_order_note( sprintf( __( 'MPGS %1$s rejected: %2$s', 'wc-recurring-mpgs' ), strtolower( $operation ), $safe_message ) );
+
+            return new WP_Error( 'wcrmpgs_refund_rejected', $safe_message );
+        }
+
+        $provider_refund_id = $this->extract_transaction_id( $body );
+        $order->update_meta_data( '_wcrmpgs_last_refund_payload', wp_json_encode( $body ) );
+        if ( $provider_refund_id ) {
+            $order->update_meta_data( '_wcrmpgs_last_refund_transaction_id', $provider_refund_id );
+        }
+        $order->save();
+
+        $note = sprintf(
+            __( 'MPGS %1$s successful. Amount: %2$s %3$s. Reason: %4$s', 'wc-recurring-mpgs' ),
+            strtolower( $operation ),
+            wc_format_decimal( $refund_amount, 2 ),
+            $order->get_currency(),
+            $reason ? wp_strip_all_tags( (string) $reason ) : __( 'N/A', 'wc-recurring-mpgs' )
         );
+        $order->add_order_note( $note );
+
+        $this->log( 'MPGS ' . strtolower( $operation ) . ' successful for order ' . $order->get_id() . '.', 'info' );
+
+        return true;
     }
 
     /**
@@ -414,6 +494,43 @@ class WCRMPGS_Gateway extends WC_Payment_Gateway {
         }
 
         return $body;
+    }
+
+    /**
+     * Send provider refund/void request for a specific transaction.
+     *
+     * @param WC_Order $order Order object.
+     * @param string   $transaction_id Original transaction ID.
+     * @param float    $amount Refund amount.
+     * @param string   $reason Refund reason.
+     * @param string   $operation Operation type REFUND|VOID.
+     * @return array|WP_Error
+     */
+    protected function send_refund_request( WC_Order $order, $transaction_id, $amount, $reason, $operation ) {
+        $request_url = $this->get_api_client()->build_endpoint(
+            $this->get_option( 'checkout_api_version', '100' ),
+            'order/' . rawurlencode( (string) $order->get_id() ) . '/transaction/' . rawurlencode( (string) $transaction_id )
+        );
+
+        $payload = array(
+            'apiOperation' => $operation,
+            'transaction'  => array(
+                'amount'    => number_format( (float) $amount, 2, '.', '' ),
+                'currency'  => $order->get_currency(),
+                'reference' => 'REFUND-' . $order->get_id() . '-' . gmdate( 'YmdHis' ),
+            ),
+            'order'        => array(
+                'id'       => (string) $order->get_id(),
+                'amount'   => number_format( (float) $amount, 2, '.', '' ),
+                'currency' => $order->get_currency(),
+            ),
+        );
+
+        if ( $reason ) {
+            $payload['transaction']['receipt'] = wp_strip_all_tags( (string) $reason );
+        }
+
+        return $this->get_api_client()->post( $request_url, $payload );
     }
 
     /**

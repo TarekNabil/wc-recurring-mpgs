@@ -210,4 +210,52 @@ class WCRMPGS_Test_Gateway_Integration extends WP_UnitTestCase {
 
         $this->gateway->process_response();
     }
+
+    public function test_process_refund_returns_true_on_successful_provider_response(): void {
+        $this->order->set_transaction_id( 'txn-original-123' );
+        $this->order->save();
+
+        add_filter(
+            'pre_http_request',
+            function ( $preempt, $parsed_args, $url ) {
+                if ( false !== strpos( $url, '/transaction/' ) ) {
+                    return array(
+                        'headers'  => array(),
+                        'body'     => wp_json_encode(
+                            array(
+                                'result'      => 'SUCCESS',
+                                'transaction' => array(
+                                    'id' => 'txn-refund-999',
+                                ),
+                            )
+                        ),
+                        'response' => array( 'code' => 200, 'message' => 'OK' ),
+                    );
+                }
+
+                return $preempt;
+            },
+            10,
+            3
+        );
+
+        $result = $this->gateway->process_refund( $this->order->get_id(), 10.00, 'Customer requested refund' );
+
+        $this->assertTrue( $result );
+
+        $order = wc_get_order( $this->order->get_id() );
+        $this->assertSame( 'txn-refund-999', $order->get_meta( '_wcrmpgs_last_refund_transaction_id', true ) );
+        $this->assertNotEmpty( $order->get_meta( '_wcrmpgs_last_refund_payload', true ) );
+    }
+
+    public function test_process_refund_returns_error_when_transaction_id_is_missing(): void {
+        $this->order->set_transaction_id( '' );
+        $this->order->delete_meta_data( '_wcrmpgs_transaction_id' );
+        $this->order->save();
+
+        $result = $this->gateway->process_refund( $this->order->get_id(), 10.00, 'Missing transaction test' );
+
+        $this->assertInstanceOf( WP_Error::class, $result );
+        $this->assertSame( 'wcrmpgs_refund_missing_transaction', $result->get_error_code() );
+    }
 }
