@@ -1,0 +1,17 @@
+# Dependency directories
+/vendor/
+/node_modules/
+
+# PHPUnit
+/.phpunit.result.cache
+/coverage/
+
+# Runtime/temp files
+*.log
+*.tmp
+*.swp
+*.swo
+
+# OS/editor noise
+.DS_Store
+Thumbs.db

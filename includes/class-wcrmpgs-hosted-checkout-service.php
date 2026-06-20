@@ -66,6 +66,7 @@ class WCRMPGS_Hosted_Checkout_Service {
                     array(
                         'wc-api'     => 'wcrmpgs_gateway',
                         'order_id'   => $order_id,
+                        'key'        => $order->get_order_key(),
                         'wcrmpgs_nonce' => wp_create_nonce( 'wcrmpgs_process_response' ),
                     ),
                     home_url( '/' )

@@ -220,6 +220,7 @@ class WCRMPGS_Gateway extends WC_Payment_Gateway {
         }
 
         $order->update_meta_data( '_wcrmpgs_success_indicator', $body['successIndicator'] ?? '' );
+        $order->update_meta_data( '_wcrmpgs_session_id', $body['session']['id'] ?? '' );
         $order->update_meta_data( '_wcrmpgs_session_version', $body['session']['version'] ?? '' );
         $order->save();
 
@@ -236,12 +237,104 @@ class WCRMPGS_Gateway extends WC_Payment_Gateway {
     }
 
     /**
-     * Placeholder callback handler.
+     * Handle provider callback after hosted checkout.
      *
      * @return void
      */
     public function process_response() {
-        wp_die( esc_html__( 'Gateway callback handling is not implemented in this scaffold yet.', 'wc-recurring-mpgs' ) );
+        $order_id = isset( $_GET['order_id'] ) ? absint( wp_unslash( $_GET['order_id'] ) ) : 0;
+        $order    = $order_id ? wc_get_order( $order_id ) : false;
+
+        if ( ! $order ) {
+            $this->log( 'Callback rejected: missing or invalid order id.', 'error' );
+            wp_die( esc_html__( 'Invalid order callback.', 'wc-recurring-mpgs' ) );
+        }
+
+        if ( $this->id !== $order->get_payment_method() ) {
+            $this->log( 'Callback rejected: payment method mismatch for order ' . $order->get_id() . '.', 'error' );
+            wp_die( esc_html__( 'Invalid payment method callback.', 'wc-recurring-mpgs' ) );
+        }
+
+        if ( ! $this->is_valid_callback_nonce() ) {
+            $this->log( 'Callback rejected: invalid nonce for order ' . $order->get_id() . '.', 'error' );
+            wp_die( esc_html__( 'Invalid callback request.', 'wc-recurring-mpgs' ) );
+        }
+
+        if ( isset( $_GET['key'] ) ) {
+            $incoming_key = sanitize_text_field( wp_unslash( $_GET['key'] ) );
+            if ( ! hash_equals( (string) $order->get_order_key(), $incoming_key ) ) {
+                $this->log( 'Callback rejected: invalid order key for order ' . $order->get_id() . '.', 'error' );
+                wp_die( esc_html__( 'Invalid callback key.', 'wc-recurring-mpgs' ) );
+            }
+        }
+
+        if ( ! $this->has_required_credentials() ) {
+            $this->log( 'Callback failed: missing credentials for order ' . $order->get_id() . '.', 'error' );
+            wc_add_notice( __( 'Payment verification is currently unavailable. Please contact support.', 'wc-recurring-mpgs' ), 'error' );
+            wp_safe_redirect( $order->get_checkout_payment_url() );
+            exit;
+        }
+
+        $verification = $this->verify_order_payment( $order );
+
+        if ( is_wp_error( $verification ) ) {
+            $this->log( 'Callback verification failed for order ' . $order->get_id() . ': ' . $verification->get_error_message(), 'error' );
+            $order->add_order_note( __( 'MPGS callback verification failed. See gateway logs for details.', 'wc-recurring-mpgs' ) );
+            wc_add_notice( __( 'We could not verify your payment. Please try again or contact support.', 'wc-recurring-mpgs' ), 'error' );
+            wp_safe_redirect( $order->get_checkout_payment_url() );
+            exit;
+        }
+
+        $callback_indicator = isset( $_GET['resultIndicator'] ) ? sanitize_text_field( wp_unslash( $_GET['resultIndicator'] ) ) : '';
+        $verified_indicator = isset( $verification['resultIndicator'] ) ? (string) $verification['resultIndicator'] : '';
+        $expected_indicator = (string) $order->get_meta( '_wcrmpgs_success_indicator', true );
+        $result_indicator   = $verified_indicator ? $verified_indicator : $callback_indicator;
+        $result_code        = isset( $verification['result'] ) ? strtoupper( (string) $verification['result'] ) : '';
+
+        $order->update_meta_data( '_wcrmpgs_result_indicator', $result_indicator );
+        $order->update_meta_data( '_wcrmpgs_result', $result_code );
+        $order->update_meta_data( '_wcrmpgs_callback_payload', wp_json_encode( $verification ) );
+
+        $transaction_id = $this->extract_transaction_id( $verification );
+        if ( $transaction_id ) {
+            $order->set_transaction_id( $transaction_id );
+            $order->update_meta_data( '_wcrmpgs_transaction_id', $transaction_id );
+        }
+
+        $indicator_matches = $expected_indicator && $result_indicator && hash_equals( $expected_indicator, $result_indicator );
+        $is_success        = $indicator_matches && 'SUCCESS' === $result_code;
+
+        if ( $is_success ) {
+            if ( ! $order->is_paid() ) {
+                $order->payment_complete( $transaction_id );
+            }
+
+            $order->add_order_note( __( 'MPGS payment verified successfully.', 'wc-recurring-mpgs' ) );
+            $order->save();
+            $this->log( 'Order ' . $order->get_id() . ' payment verified successfully.', 'info' );
+
+            wp_safe_redirect( $this->get_return_url( $order ) );
+            exit;
+        }
+
+        $failure_message = __( 'Payment was not completed or verification failed.', 'wc-recurring-mpgs' );
+
+        if ( $expected_indicator && ! $indicator_matches ) {
+            $failure_message = __( 'Payment verification failed due to mismatched indicator.', 'wc-recurring-mpgs' );
+        }
+
+        if ( ! $order->is_paid() && ! $order->has_status( 'failed' ) ) {
+            $order->update_status( 'failed', $failure_message );
+        }
+
+        $order->add_order_note( $failure_message );
+        $order->save();
+
+        $this->log( 'Order ' . $order->get_id() . ' payment verification failed. Result: ' . $result_code . '.', 'warning' );
+
+        wc_add_notice( $failure_message, 'error' );
+        wp_safe_redirect( $order->get_checkout_payment_url() );
+        exit;
     }
 
     /**
@@ -284,17 +377,88 @@ class WCRMPGS_Gateway extends WC_Payment_Gateway {
     }
 
     /**
+     * Validate callback nonce.
+     *
+     * @return bool
+     */
+    protected function is_valid_callback_nonce() {
+        if ( empty( $_GET['wcrmpgs_nonce'] ) ) {
+            return false;
+        }
+
+        return (bool) wp_verify_nonce( sanitize_text_field( wp_unslash( $_GET['wcrmpgs_nonce'] ) ), 'wcrmpgs_process_response' );
+    }
+
+    /**
+     * Verify order state with provider API.
+     *
+     * @param WC_Order $order Order object.
+     * @return array|WP_Error
+     */
+    protected function verify_order_payment( WC_Order $order ) {
+        $request_url = $this->get_api_client()->build_endpoint(
+            $this->get_option( 'checkout_api_version', '100' ),
+            'order/' . rawurlencode( (string) $order->get_id() )
+        );
+
+        $response = $this->get_api_client()->get( $request_url );
+
+        if ( is_wp_error( $response ) ) {
+            return $response;
+        }
+
+        $body = json_decode( wp_remote_retrieve_body( $response ), true );
+
+        if ( ! is_array( $body ) ) {
+            return new WP_Error( 'wcrmpgs_invalid_verification_response', __( 'Invalid verification response.', 'wc-recurring-mpgs' ) );
+        }
+
+        return $body;
+    }
+
+    /**
+     * Extract transaction id from order verification payload.
+     *
+     * @param array $verification Verification payload.
+     * @return string
+     */
+    protected function extract_transaction_id( array $verification ) {
+        if ( ! empty( $verification['transaction']['id'] ) ) {
+            return (string) $verification['transaction']['id'];
+        }
+
+        if ( ! empty( $verification['transaction'][0]['id'] ) ) {
+            return (string) $verification['transaction'][0]['id'];
+        }
+
+        if ( ! empty( $verification['id'] ) ) {
+            return (string) $verification['id'];
+        }
+
+        return '';
+    }
+
+    /**
+     * Build shared API client instance.
+     *
+     * @return WCRMPGS_Api_Client
+     */
+    protected function get_api_client() {
+        return new WCRMPGS_Api_Client(
+            $this->get_option( 'service_host' ),
+            $this->get_option( 'merchant_id' ),
+            $this->get_option( 'authentication_password' )
+        );
+    }
+
+    /**
      * Build the hosted checkout service.
      *
     * @return WCRMPGS_Hosted_Checkout_Service
      */
     protected function get_hosted_checkout_service() {
         return new WCRMPGS_Hosted_Checkout_Service(
-            new WCRMPGS_Api_Client(
-                $this->get_option( 'service_host' ),
-                $this->get_option( 'merchant_id' ),
-                $this->get_option( 'authentication_password' )
-            ),
+            $this->get_api_client(),
             array(
                 'checkout_api_version' => $this->get_option( 'checkout_api_version', '100' ),
                 'merchant_name'        => $this->get_option( 'merchant_name', '' ),

@@ -1,0 +1,9 @@
+{
+    "name": "tarek/wc-recurring-mpgs",
+    "description": "WC Recurring MPGS plugin test tooling",
+    "type": "wordpress-plugin",
+    "require-dev": {
+        "phpunit/phpunit": "^9.6",
+        "yoast/phpunit-polyfills": "^1.1"
+    }
+}

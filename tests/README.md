@@ -1,127 +1,73 @@
 # WC Recurring MPGS - Tests
 
-This directory contains integration and unit tests for the plugin.
+This plugin follows the same split strategy used in simple-plugin:
 
-## Test Files
+1. `tests/unit`: pure logic tests with isolated stubs
+2. `tests/integration`: WordPress + WooCommerce behavior tests
 
-### `integration-test-callback-flow.md`
+This prevents test duplication.
 
-**Manual integration test checklist** for the callback verification and order finalization flow.
+## Structure
 
-Use this document to verify the following scenarios:
-1. Successful payment callback (indicator matches, result SUCCESS)
-2. Mismatched success indicator (verification failure)
-3. Callback verification API failure
-4. Invalid nonce
-5. Invalid order key
-6. Missing order ID
-7. Payment method mismatch
-8. Transaction ID extraction
+1. `tests/unit/bootstrap.php`
+2. `tests/unit/test-api-client-unit.php`
+3. `tests/unit/test-hosted-checkout-service-unit.php`
+4. `tests/bootstrap.php`
+5. `tests/integration/test-gateway-integration.php`
 
-**How to use:**
-- Review the environment setup requirements
-- Follow each test case step-by-step
-- Check the expected outcomes
-- Document findings in the sign-off section
+## Coverage Split (No Overlap)
 
-### `class-test-callback-flow.php`
+1. Unit tests cover:
+	- `WCRMPGS_Api_Client::build_endpoint()` URL construction
+	- `WCRMPGS_Api_Client::post()` request envelope and headers
+	- `WCRMPGS_Api_Client::get()` request envelope and headers
+	- hosted checkout payload shape and callback URL fields (`key`, nonce)
 
-**PHPUnit test suite** for automated callback flow testing.
+2. Integration tests cover:
+	- `WCRMPGS_Gateway::process_payment()` with mocked HTTP transport via `pre_http_request`
+	- order meta persistence after session creation
+	- callback hard-rejection paths (`invalid nonce`, `payment method mismatch`) via `wp_die_handler`
 
-Includes:
-- Successful callback with matching indicator
-- Callback rejection with invalid nonce
-- Callback rejection with invalid order key
-- Callback rejection with invalid order ID
-- Callback rejection with payment method mismatch
-- Callback with mismatched indicator (order marked failed)
-- Transaction ID extraction from various response formats
+## Run Tests
 
-**How to run:**
-```bash
-# From WordPress root directory
-wp test run --testcase=WCRMPGS_Test_Callback_Flow
-
-# Or with PHPUnit directly
-phpunit tests/class-test-callback-flow.php
-```
-
-**Prerequisites:**
-- WordPress test environment (with `tests/bootstrap.php`)
-- PHPUnit installed
-- WooCommerce plugin active
-- Plugin activated in tests
-
-## Running Tests
-
-### Manual Testing
-
-1. Set up a local WordPress + WooCommerce environment
-2. Configure the MPGS gateway with test credentials
-3. Follow `integration-test-callback-flow.md` step-by-step
-4. Document results and sign off
-
-### Automated Testing
+1. Install dependencies:
 
 ```bash
-# Install test dependencies (if not already installed)
-composer install --dev
-
-# Run all plugin tests
-wp test run
-
-# Run specific test class
-wp test run --testcase=WCRMPGS_Test_Callback_Flow
-
-# Run with verbose output
-wp test run --testcase=WCRMPGS_Test_Callback_Flow --verbose
+composer install
+npm install
 ```
 
-## Test Coverage
+2. Start wp-env:
 
-### Phase 1 (Current)
-- ✅ Callback verification
-- ✅ Order finalization (success path)
-- ✅ Order failure handling
-- ✅ Metadata persistence
-- ✅ Transaction ID extraction
+```bash
+npm run env:start
+```
 
-### Phase 2 (Future)
-- ⏳ Refund processing
-- ⏳ Void requests
-- ⏳ Order notes and logging
+3. Run unit tests:
 
-### Phase 3 (Future)
-- ⏳ Token storage and retrieval
-- ⏳ Recurring MIT charge requests
-- ⏳ Manual admin charge action
+```bash
+npm run test:unit
+```
 
-### Phase 4 (Future)
-- ⏳ Webhook ingestion
-- ⏳ Retry policies
-- ⏳ Duplicate charge protection
+4. Run integration tests:
 
-## Known Issues / Limitations
+```bash
+npm run test:integration
+```
 
-1. **Exit in callbacks:** The `process_response()` method uses `exit;` to redirect, which causes exceptions in test environment. Tests handle this with `try/catch` around `ob_start()`.
+5. Run all:
 
-2. **Mock verification:** Automated tests need to mock the `verify_order_payment()` method since it makes actual HTTP requests. For integration testing, use the manual checklist with a test provider account.
+```bash
+npm run test:all
+```
 
-3. **Nonce verification:** Automated tests generate nonces in `set_up()`, but real callbacks must include the nonce created during checkout session.
+## Config Files
 
-## Debugging
+1. `phpunit.unit.xml` -> unit suite (`tests/unit`, bootstrap `tests/unit/bootstrap.php`)
+2. `phpunit.xml` -> integration suite (`tests/integration`, bootstrap `tests/bootstrap.php`)
+3. `.wp-env.json` -> wp-env + WooCommerce plugin wiring
 
-Enable debug logging in gateway settings to see detailed callback processing:
-- WooCommerce > Settings > Payments > WC Recurring MPGS
-- Enable "Debug Log"
-- Check logs at: WooCommerce > Status > Logs
+## Notes
 
-Log file pattern: `wc-recurring-mpgs-YYYY-MM-DD.log`
-
-## Contributing
-
-When adding new tests:
-1. Add manual test case to `integration-test-callback-flow.md`
-2. Add corresponding PHPUnit test to `class-test-callback-flow.php`
-3. Document expected behavior in test docblocks
-4. Ensure all related cleanup in `tear_down()` method
+1. Integration tests intentionally avoid success-path `process_response()` assertions because the method redirects and exits; these are best covered by end-to-end callback runs.
+2. Unit tests intentionally avoid WordPress DB behavior; integration tests own DB and order-state behavior.

@@ -1,0 +1,16 @@
+{
+    "name": "wc-recurring-mpgs",
+    "description": "WC Recurring MPGS plugin",
+    "scripts": {
+        "env:start": "wp-env start",
+        "env:stop": "wp-env stop",
+        "env:destroy": "wp-env destroy",
+        "test": "npm run test:integration",
+        "test:unit": "php vendor/bin/phpunit -c phpunit.unit.xml",
+        "test:integration": "wp-env run tests-cli phpunit -c /var/www/html/wp-content/plugins/wc-recurring-mpgs/phpunit.xml",
+        "test:all": "npm run test:unit && npm run test:integration"
+    },
+    "devDependencies": {
+        "@wordpress/env": "^10.0.0"
+    }
+}
