@@ -38,6 +38,25 @@ wc-recurring-mpgs/
 
 ## Delivery Phases
 
+## Current Stage
+
+Current stage is Phase 3 hardening for one-time hosted checkout.
+
+Implemented at this stage:
+
+1. Hosted checkout session creation and redirect flow.
+2. Callback verification and order finalization.
+3. Failed/canceled callback retry routing.
+4. Refund/void operations using provider-compatible transport methods.
+5. Blocks checkout registration and classic checkout compatibility.
+6. Green automated suites (unit + integration).
+
+Not started in this stage:
+
+1. Recurring token capture and agreement storage.
+2. MIT recurring renewals and scheduling hooks.
+3. Webhook reconciliation and retry policy automation.
+
 ### Phase 1
 
 1. Plugin bootstrap.
@@ -55,12 +74,12 @@ wc-recurring-mpgs/
 
 ### Phase 3
 
-1. Complete a testable one-time payment release gate.
-2. Validate end-to-end hosted checkout success flow in sandbox.
-3. Validate callback failures and customer retry behavior.
-4. Validate merchant operational flow (logs, order notes, admin visibility).
-5. Freeze one-time payment contract (meta keys, statuses, and error mapping).
-6. Require green automated suites (unit + integration) before feature expansion.
+1. ⏳ Complete a testable one-time payment release gate.
+2. ⏳ Validate end-to-end hosted checkout success flow in sandbox.
+3. ⏳ Validate callback failures and customer retry behavior.
+4. ⏳ Validate merchant operational flow (logs, order notes, admin visibility).
+5. ✅ Freeze one-time payment contract (meta keys, statuses, and error mapping).
+6. ⏳ Require green automated suites (unit + integration) before feature expansion.
 
 ### Phase 4
 
@@ -86,6 +105,8 @@ The project does not move to recurring payments until all items below pass:
 4. Integration tests for one-time payment flow pass in the test container.
 5. Unit tests for payload and API client behavior pass.
 6. Manual sandbox smoke tests are documented and signed off.
+
+See detailed gate contract and checklist in `docs/one-time-payment-gate.md`.
 
 ## Current Scaffold Status
 

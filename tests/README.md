@@ -27,6 +27,8 @@ This prevents test duplication.
 	- `WCRMPGS_Gateway::process_payment()` with mocked HTTP transport via `pre_http_request`
 	- order meta persistence after session creation
 	- callback hard-rejection paths (`invalid nonce`, `payment method mismatch`) via `wp_die_handler`
+	- callback outcome finalization (success path + indicator mismatch path)
+	- refund success and missing-transaction error path
 
 ## Run Tests
 
@@ -71,3 +73,7 @@ npm run test:all
 
 1. Integration tests intentionally avoid success-path `process_response()` assertions because the method redirects and exits; these are best covered by end-to-end callback runs.
 2. Unit tests intentionally avoid WordPress DB behavior; integration tests own DB and order-state behavior.
+
+## Phase 3 Gate
+
+One-time payment release gate checklist is documented in `docs/one-time-payment-gate.md`.

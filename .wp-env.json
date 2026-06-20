@@ -2,7 +2,10 @@
     "phpVersion": "8.0",
     "plugins": [
         "../woocommerce",
-        "."
+        ".",
+        "../salmanpatnee-mpgs-for-woocommerce",
+        "../woocommerce-subscriptions",
+        "../wc-donation-platform"
     ],
     "config": {
         "JETPACK_AUTOLOAD_DEV": false,

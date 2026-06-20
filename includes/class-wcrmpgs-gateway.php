@@ -52,7 +52,9 @@ class WCRMPGS_Gateway extends WC_Payment_Gateway {
         add_action( 'woocommerce_update_options_payment_gateways_' . $this->id, array( $this, 'process_admin_options' ) );
         add_action( 'woocommerce_receipt_' . $this->id, array( $this, 'receipt_page' ) );
         add_action( 'wp_enqueue_scripts', array( $this, 'payment_scripts' ) );
+        add_action( 'wp', array( $this, 'maybe_add_retry_notice' ) );
         add_action( 'woocommerce_api_wcrmpgs_gateway', array( $this, 'process_response' ) );
+        add_filter( 'script_loader_tag', array( $this, 'filter_checkout_sdk_script_tag' ), 10, 3 );
     }
 
     /**
@@ -166,10 +168,33 @@ class WCRMPGS_Gateway extends WC_Payment_Gateway {
             return;
         }
 
+        $retry_url = '';
+        $order_id  = isset( $_GET['order-pay'] ) ? absint( wp_unslash( $_GET['order-pay'] ) ) : 0;
+        $order     = $order_id ? wc_get_order( $order_id ) : false;
+
+        if ( $order && $this->id === $order->get_payment_method() ) {
+            $retry_url = $this->get_retry_payment_url( $order );
+        }
+
+        $sdk_url = $this->get_checkout_sdk_url();
+
+        if ( ! $sdk_url ) {
+            $this->log( 'Hosted checkout SDK was not enqueued: invalid service host configuration.', 'error' );
+            return;
+        }
+
+        wp_enqueue_script(
+            'wcrmpgs-checkout-sdk',
+            $sdk_url,
+            array(),
+            $this->get_option( 'checkout_api_version', '100' ),
+            true
+        );
+
         wp_enqueue_script(
             'wcrmpgs-hosted-checkout',
             WCRMPGS_PLUGIN_URL . 'assets/js/checkout.js',
-            array(),
+            array( 'wcrmpgs-checkout-sdk' ),
             WCRMPGS_VERSION,
             true
         );
@@ -179,7 +204,85 @@ class WCRMPGS_Gateway extends WC_Payment_Gateway {
             'wcrmpgsCheckoutConfig',
             array(
                 'sessionId' => $session_id,
+                'retryUrl'  => $retry_url,
             )
+        );
+    }
+
+    /**
+     * Add a notice when a hosted checkout attempt returns for retry.
+     *
+     * @return void
+     */
+    public function maybe_add_retry_notice() {
+        if ( ! is_checkout_pay_page() || empty( $_GET['wcrmpgs_retry'] ) ) {
+            return;
+        }
+
+        $order_id = isset( $_GET['order-pay'] ) ? absint( wp_unslash( $_GET['order-pay'] ) ) : 0;
+        $order    = $order_id ? wc_get_order( $order_id ) : false;
+
+        if ( ! $order || $this->id !== $order->get_payment_method() ) {
+            return;
+        }
+
+        wc_add_notice( __( 'Payment was canceled or could not be completed. Please try again.', 'wc-recurring-mpgs' ), 'error' );
+    }
+
+    /**
+     * Inject MPGS hosted checkout callbacks into the SDK script tag.
+     *
+     * @param string $tag Script tag.
+     * @param string $handle Script handle.
+     * @param string $src Script source.
+     * @return string
+     */
+    public function filter_checkout_sdk_script_tag( $tag, $handle, $src ) {
+        if ( 'wcrmpgs-checkout-sdk' !== $handle ) {
+            return $tag;
+        }
+
+        return sprintf(
+            '<script src="%1$s" data-error="wcrmpgsErrorCallback" data-cancel="wcrmpgsCancelCallback"></script>',
+            esc_url( $src )
+        );
+    }
+
+    /**
+     * Build MPGS Checkout SDK URL from service host and API version.
+     *
+     * @return string
+     */
+    protected function get_checkout_sdk_url() {
+        $service_host = trailingslashit( (string) $this->get_option( 'service_host', '' ) );
+
+        if ( ! $service_host || ! wp_http_validate_url( $service_host ) ) {
+            return '';
+        }
+
+        $api_version = (int) $this->get_option( 'checkout_api_version', '100' );
+
+        if ( $api_version >= 63 ) {
+            return $service_host . 'static/checkout/checkout.min.js';
+        }
+
+        return $service_host . 'checkout/version/' . $api_version . '/checkout.js';
+    }
+
+    /**
+     * Build a clean pay-for-order URL that does not relaunch the current session.
+     *
+     * @param WC_Order $order Order object.
+     * @return string
+     */
+    protected function get_retry_payment_url( WC_Order $order ) {
+        return add_query_arg(
+            array(
+                'pay_for_order' => 'true',
+                'key'           => $order->get_order_key(),
+                'wcrmpgs_retry' => '1',
+            ),
+            $order->get_checkout_payment_url()
         );
     }
 
@@ -275,7 +378,7 @@ class WCRMPGS_Gateway extends WC_Payment_Gateway {
         if ( ! $this->has_required_credentials() ) {
             $this->log( 'Callback failed: missing credentials for order ' . $order->get_id() . '.', 'error' );
             wc_add_notice( __( 'Payment verification is currently unavailable. Please contact support.', 'wc-recurring-mpgs' ), 'error' );
-            wp_safe_redirect( $order->get_checkout_payment_url() );
+            wp_safe_redirect( $this->get_retry_payment_url( $order ) );
             exit;
         }
 
@@ -285,59 +388,20 @@ class WCRMPGS_Gateway extends WC_Payment_Gateway {
             $this->log( 'Callback verification failed for order ' . $order->get_id() . ': ' . $verification->get_error_message(), 'error' );
             $order->add_order_note( __( 'MPGS callback verification failed. See gateway logs for details.', 'wc-recurring-mpgs' ) );
             wc_add_notice( __( 'We could not verify your payment. Please try again or contact support.', 'wc-recurring-mpgs' ), 'error' );
-            wp_safe_redirect( $order->get_checkout_payment_url() );
+            wp_safe_redirect( $this->get_retry_payment_url( $order ) );
             exit;
         }
 
         $callback_indicator = isset( $_GET['resultIndicator'] ) ? sanitize_text_field( wp_unslash( $_GET['resultIndicator'] ) ) : '';
-        $verified_indicator = isset( $verification['resultIndicator'] ) ? (string) $verification['resultIndicator'] : '';
-        $expected_indicator = (string) $order->get_meta( '_wcrmpgs_success_indicator', true );
-        $result_indicator   = $verified_indicator ? $verified_indicator : $callback_indicator;
-        $result_code        = isset( $verification['result'] ) ? strtoupper( (string) $verification['result'] ) : '';
+        $result            = $this->finalize_callback_result( $order, $verification, $callback_indicator );
 
-        $order->update_meta_data( '_wcrmpgs_result_indicator', $result_indicator );
-        $order->update_meta_data( '_wcrmpgs_result', $result_code );
-        $order->update_meta_data( '_wcrmpgs_callback_payload', wp_json_encode( $verification ) );
-
-        $transaction_id = $this->extract_transaction_id( $verification );
-        if ( $transaction_id ) {
-            $order->set_transaction_id( $transaction_id );
-            $order->update_meta_data( '_wcrmpgs_transaction_id', $transaction_id );
-        }
-
-        $indicator_matches = $expected_indicator && $result_indicator && hash_equals( $expected_indicator, $result_indicator );
-        $is_success        = $indicator_matches && 'SUCCESS' === $result_code;
-
-        if ( $is_success ) {
-            if ( ! $order->is_paid() ) {
-                $order->payment_complete( $transaction_id );
-            }
-
-            $order->add_order_note( __( 'MPGS payment verified successfully.', 'wc-recurring-mpgs' ) );
-            $order->save();
-            $this->log( 'Order ' . $order->get_id() . ' payment verified successfully.', 'info' );
-
+        if ( $result['success'] ) {
             wp_safe_redirect( $this->get_return_url( $order ) );
             exit;
         }
 
-        $failure_message = __( 'Payment was not completed or verification failed.', 'wc-recurring-mpgs' );
-
-        if ( $expected_indicator && ! $indicator_matches ) {
-            $failure_message = __( 'Payment verification failed due to mismatched indicator.', 'wc-recurring-mpgs' );
-        }
-
-        if ( ! $order->is_paid() && ! $order->has_status( 'failed' ) ) {
-            $order->update_status( 'failed', $failure_message );
-        }
-
-        $order->add_order_note( $failure_message );
-        $order->save();
-
-        $this->log( 'Order ' . $order->get_id() . ' payment verification failed. Result: ' . $result_code . '.', 'warning' );
-
-        wc_add_notice( $failure_message, 'error' );
-        wp_safe_redirect( $order->get_checkout_payment_url() );
+        wc_add_notice( $result['message'], 'error' );
+        wp_safe_redirect( $this->get_retry_payment_url( $order ) );
         exit;
     }
 
@@ -497,6 +561,75 @@ class WCRMPGS_Gateway extends WC_Payment_Gateway {
     }
 
     /**
+     * Finalize callback verification result and persist order outcome.
+     *
+     * @param WC_Order $order Order object.
+     * @param array    $verification Verification payload.
+     * @param string   $callback_indicator Callback result indicator.
+     * @return array{success:bool,message:string,result_code:string,result_indicator:string,transaction_id:string}
+     */
+    protected function finalize_callback_result( WC_Order $order, array $verification, $callback_indicator = '' ) {
+        $verified_indicator = isset( $verification['resultIndicator'] ) ? (string) $verification['resultIndicator'] : '';
+        $expected_indicator = (string) $order->get_meta( '_wcrmpgs_success_indicator', true );
+        $result_indicator   = $verified_indicator ? $verified_indicator : (string) $callback_indicator;
+        $result_code        = isset( $verification['result'] ) ? strtoupper( (string) $verification['result'] ) : '';
+
+        $order->update_meta_data( '_wcrmpgs_result_indicator', $result_indicator );
+        $order->update_meta_data( '_wcrmpgs_result', $result_code );
+        $order->update_meta_data( '_wcrmpgs_callback_payload', wp_json_encode( $verification ) );
+
+        $transaction_id = $this->extract_transaction_id( $verification );
+        if ( $transaction_id ) {
+            $order->set_transaction_id( $transaction_id );
+            $order->update_meta_data( '_wcrmpgs_transaction_id', $transaction_id );
+        }
+
+        $indicator_matches = $expected_indicator && $result_indicator && hash_equals( $expected_indicator, $result_indicator );
+        $is_success        = $indicator_matches && 'SUCCESS' === $result_code;
+
+        if ( $is_success ) {
+            if ( ! $order->is_paid() ) {
+                $order->payment_complete( $transaction_id );
+            }
+
+            $order->add_order_note( __( 'MPGS payment verified successfully.', 'wc-recurring-mpgs' ) );
+            $order->save();
+            $this->log( 'Order ' . $order->get_id() . ' payment verified successfully.', 'info' );
+
+            return array(
+                'success'          => true,
+                'message'          => '',
+                'result_code'      => $result_code,
+                'result_indicator' => $result_indicator,
+                'transaction_id'   => $transaction_id,
+            );
+        }
+
+        $failure_message = __( 'Payment was not completed or verification failed.', 'wc-recurring-mpgs' );
+
+        if ( $expected_indicator && ! $indicator_matches ) {
+            $failure_message = __( 'Payment verification failed due to mismatched indicator.', 'wc-recurring-mpgs' );
+        }
+
+        if ( ! $order->is_paid() && ! $order->has_status( 'failed' ) ) {
+            $order->update_status( 'failed', $failure_message );
+        }
+
+        $order->add_order_note( $failure_message );
+        $order->save();
+
+        $this->log( 'Order ' . $order->get_id() . ' payment verification failed. Result: ' . $result_code . '.', 'warning' );
+
+        return array(
+            'success'          => false,
+            'message'          => $failure_message,
+            'result_code'      => $result_code,
+            'result_indicator' => $result_indicator,
+            'transaction_id'   => $transaction_id,
+        );
+    }
+
+    /**
      * Send provider refund/void request for a specific transaction.
      *
      * @param WC_Order $order Order object.
@@ -507,20 +640,34 @@ class WCRMPGS_Gateway extends WC_Payment_Gateway {
      * @return array|WP_Error
      */
     protected function send_refund_request( WC_Order $order, $transaction_id, $amount, $reason, $operation ) {
-        $request_url = $this->get_api_client()->build_endpoint(
-            $this->get_option( 'checkout_api_version', '100' ),
-            'order/' . rawurlencode( (string) $order->get_id() ) . '/transaction/' . rawurlencode( (string) $transaction_id )
+        $api_version = $this->get_option( 'checkout_api_version', '100' );
+        $base_path   = 'order/' . rawurlencode( (string) $order->get_id() ) . '/transaction/';
+        $base_url    = $this->get_api_client()->build_endpoint( $api_version, $base_path );
+
+        $headers = array(
+            'Authorization' => 'Basic ' . base64_encode( 'merchant.' . $this->get_option( 'merchant_id' ) . ':' . $this->get_option( 'authentication_password' ) ),
+            'Accept'        => 'application/json',
         );
 
+        if ( 'VOID' === $operation ) {
+            $request_url = $base_url . rawurlencode( (string) $transaction_id );
+
+            return wp_remote_request(
+                $request_url,
+                array(
+                    'method'  => 'DELETE',
+                    'headers' => $headers,
+                    'timeout' => 45,
+                )
+            );
+        }
+
+        $refund_transaction_id = 'refund-' . gmdate( 'YmdHis' );
+        $request_url           = $base_url . rawurlencode( $refund_transaction_id );
+
         $payload = array(
-            'apiOperation' => $operation,
+            'apiOperation' => 'REFUND',
             'transaction'  => array(
-                'amount'    => number_format( (float) $amount, 2, '.', '' ),
-                'currency'  => $order->get_currency(),
-                'reference' => 'REFUND-' . $order->get_id() . '-' . gmdate( 'YmdHis' ),
-            ),
-            'order'        => array(
-                'id'       => (string) $order->get_id(),
                 'amount'   => number_format( (float) $amount, 2, '.', '' ),
                 'currency' => $order->get_currency(),
             ),
@@ -530,7 +677,17 @@ class WCRMPGS_Gateway extends WC_Payment_Gateway {
             $payload['transaction']['receipt'] = wp_strip_all_tags( (string) $reason );
         }
 
-        return $this->get_api_client()->post( $request_url, $payload );
+        $headers['Content-Type'] = 'application/json';
+
+        return wp_remote_request(
+            $request_url,
+            array(
+                'method'  => 'PUT',
+                'headers' => $headers,
+                'body'    => wp_json_encode( $payload ),
+                'timeout' => 45,
+            )
+        );
     }
 
     /**

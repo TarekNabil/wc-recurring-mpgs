@@ -258,4 +258,81 @@ class WCRMPGS_Test_Gateway_Integration extends WP_UnitTestCase {
         $this->assertInstanceOf( WP_Error::class, $result );
         $this->assertSame( 'wcrmpgs_refund_missing_transaction', $result->get_error_code() );
     }
+
+    public function test_finalize_callback_result_marks_order_paid_on_success(): void {
+        $this->order->update_meta_data( '_wcrmpgs_success_indicator', 'expected-indicator-1' );
+        $this->order->save();
+
+        $verification = array(
+            'result'          => 'SUCCESS',
+            'resultIndicator' => 'expected-indicator-1',
+            'transaction'     => array(
+                'id' => 'txn-success-100',
+            ),
+        );
+
+        $result = $this->invoke_protected_method(
+            $this->gateway,
+            'finalize_callback_result',
+            array( $this->order, $verification, 'expected-indicator-1' )
+        );
+
+        $this->assertTrue( $result['success'] );
+        $this->assertSame( 'SUCCESS', $result['result_code'] );
+        $this->assertSame( 'expected-indicator-1', $result['result_indicator'] );
+
+        $order = wc_get_order( $this->order->get_id() );
+        $this->assertTrue( $order->is_paid() );
+        $this->assertSame( 'txn-success-100', $order->get_transaction_id() );
+        $this->assertSame( 'expected-indicator-1', $order->get_meta( '_wcrmpgs_result_indicator', true ) );
+        $this->assertSame( 'SUCCESS', $order->get_meta( '_wcrmpgs_result', true ) );
+        $this->assertNotEmpty( $order->get_meta( '_wcrmpgs_callback_payload', true ) );
+    }
+
+    public function test_finalize_callback_result_marks_order_failed_on_indicator_mismatch(): void {
+        $this->order->update_meta_data( '_wcrmpgs_success_indicator', 'expected-indicator-2' );
+        $this->order->save();
+
+        $verification = array(
+            'result'          => 'SUCCESS',
+            'resultIndicator' => 'different-indicator',
+            'transaction'     => array(
+                'id' => 'txn-fail-101',
+            ),
+        );
+
+        $result = $this->invoke_protected_method(
+            $this->gateway,
+            'finalize_callback_result',
+            array( $this->order, $verification, 'different-indicator' )
+        );
+
+        $this->assertFalse( $result['success'] );
+        $this->assertSame( 'SUCCESS', $result['result_code'] );
+        $this->assertSame( 'different-indicator', $result['result_indicator'] );
+        $this->assertSame( 'Payment verification failed due to mismatched indicator.', $result['message'] );
+
+        $order = wc_get_order( $this->order->get_id() );
+        $this->assertFalse( $order->is_paid() );
+        $this->assertTrue( $order->has_status( 'failed' ) );
+        $this->assertSame( 'different-indicator', $order->get_meta( '_wcrmpgs_result_indicator', true ) );
+        $this->assertSame( 'SUCCESS', $order->get_meta( '_wcrmpgs_result', true ) );
+        $this->assertNotEmpty( $order->get_meta( '_wcrmpgs_callback_payload', true ) );
+    }
+
+    /**
+     * Call a protected method on target object.
+     *
+     * @param object $object Target object.
+     * @param string $method_name Method name.
+     * @param array  $params Method params.
+     * @return mixed
+     */
+    private function invoke_protected_method( $object, $method_name, array $params = array() ) {
+        $reflection = new ReflectionClass( get_class( $object ) );
+        $method     = $reflection->getMethod( $method_name );
+        $method->setAccessible( true );
+
+        return $method->invokeArgs( $object, $params );
+    }
 }

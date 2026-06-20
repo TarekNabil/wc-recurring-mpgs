@@ -50,7 +50,7 @@ final class WCRMPGS_Blocks_Support extends AbstractPaymentMethodType {
     public function get_payment_method_script_handles() {
         wp_register_script(
             'wcrmpgs-blocks-integration',
-            WCRMPGS_PLUGIN_URL . 'assets/js/checkout.js',
+            WCRMPGS_PLUGIN_URL . 'assets/js/blocks.js',
             array( 'wc-blocks-registry', 'wc-settings', 'wp-element', 'wp-html-entities' ),
             WCRMPGS_VERSION,
             true
