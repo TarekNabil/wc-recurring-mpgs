@@ -72,7 +72,6 @@ class WCRMPGS_Gateway extends WC_Payment_Gateway {
             'subscription_payment_method_change_customer',
             'subscription_payment_method_delayed_change',
             'multiple_subscriptions',
-            'gateway_scheduled_payments',
         );
         $this->icon               = apply_filters( 'wcrmpgs_icon', '' );
 
@@ -1031,9 +1030,23 @@ class WCRMPGS_Gateway extends WC_Payment_Gateway {
             return;
         }
 
+        // Some subscription flows may trigger the renewal hook more than once.
+        // If this renewal order is already paid from a previous successful attempt,
+        // silently ignore the duplicate trigger.
+        $last_attempt_result = (string) $renewal_order->get_meta( '_wcrmpgs_renewal_attempt_result', true );
+        if ( $renewal_order->is_paid() && 'success' === $last_attempt_result ) {
+            $this->log( 'Renewal MIT duplicate trigger ignored for already-paid order ' . $renewal_order->get_id() . '.', 'info' );
+            return;
+        }
+
         $result = $this->process_renewal_mit_charge( $renewal_order, (float) $amount_to_charge );
 
         if ( is_wp_error( $result ) ) {
+            if ( 'wcrmpgs_renewal_duplicate_attempt' === $result->get_error_code() && $renewal_order->is_paid() ) {
+                $this->log( 'Renewal MIT duplicate attempt ignored for already-paid order ' . $renewal_order->get_id() . '.', 'info' );
+                return;
+            }
+
             $message = $result->get_error_message();
 
             if ( ! $renewal_order->is_paid() && ! $renewal_order->has_status( 'failed' ) ) {
