@@ -22,6 +22,12 @@ namespace {
         }
     }
 
+    if ( ! function_exists( 'is_wp_error' ) ) {
+        function is_wp_error( $thing ): bool {
+            return $thing instanceof WP_Error;
+        }
+    }
+
     if ( ! function_exists( 'trailingslashit' ) ) {
         function trailingslashit( string $value ): string {
             return rtrim( $value, '/' ) . '/';
@@ -71,6 +77,12 @@ namespace {
         }
     }
 
+    if ( ! function_exists( 'apply_filters' ) ) {
+        function apply_filters( string $hook_name, $value ) {
+            return $value;
+        }
+    }
+
     $GLOBALS['wcrmpgs_unit_spy'] = array(
         'post_calls' => array(),
         'get_calls'  => array(),
@@ -95,6 +107,9 @@ namespace {
 namespace {
     require_once dirname( __DIR__, 2 ) . '/includes/class-wcrmpgs-api-client.php';
     require_once dirname( __DIR__, 2 ) . '/includes/class-wcrmpgs-hosted-checkout-service.php';
+    require_once dirname( __DIR__, 2 ) . '/includes/class-wcrmpgs-recurring-contract.php';
+    require_once dirname( __DIR__, 2 ) . '/includes/class-wcrmpgs-recurring-service.php';
+    require_once dirname( __DIR__, 2 ) . '/includes/class-wcrmpgs-webhook-controller.php';
 
     class WCRMPGS_Test_Order_Stub {
         private int $id;

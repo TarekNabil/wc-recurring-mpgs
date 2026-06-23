@@ -61,3 +61,5 @@ Recurring payment work starts only when:
 1. Contract keys/statuses above are stable.
 2. Automated suites pass on CI-equivalent environment.
 3. Manual sandbox checks are signed off.
+
+Record the decision and checklist completion in `docs/phase-3-signoff.md`.

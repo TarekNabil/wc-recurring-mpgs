@@ -40,7 +40,7 @@ wc-recurring-mpgs/
 
 ## Current Stage
 
-Current stage is Phase 3 hardening for one-time hosted checkout.
+Current stage is Phase 4 kickoff for recurring core implementation.
 
 Implemented at this stage:
 
@@ -50,6 +50,7 @@ Implemented at this stage:
 4. Refund/void operations using provider-compatible transport methods.
 5. Blocks checkout registration and classic checkout compatibility.
 6. Green automated suites (unit + integration).
+7. Phase 3 manual sandbox smoke checklist is signed off.
 
 Not started in this stage:
 
@@ -74,12 +75,12 @@ Not started in this stage:
 
 ### Phase 3
 
-1. ⏳ Complete a testable one-time payment release gate.
-2. ⏳ Validate end-to-end hosted checkout success flow in sandbox.
-3. ⏳ Validate callback failures and customer retry behavior.
-4. ⏳ Validate merchant operational flow (logs, order notes, admin visibility).
+1. ✅ Complete a testable one-time payment release gate.
+2. ✅ Validate end-to-end hosted checkout success flow in sandbox.
+3. ✅ Validate callback failures and customer retry behavior.
+4. ✅ Validate merchant operational flow (logs, order notes, admin visibility).
 5. ✅ Freeze one-time payment contract (meta keys, statuses, and error mapping).
-6. ⏳ Require green automated suites (unit + integration) before feature expansion.
+6. ✅ Require green automated suites (unit + integration) before feature expansion.
 
 ### Phase 4
 
@@ -95,6 +96,12 @@ Not started in this stage:
 3. Add tests for payload builders and response handlers.
 4. Update merchant-facing documentation.
 
+Current kickoff status:
+
+1. Webhook controller scaffold added.
+2. Public ingestion endpoints are registered.
+3. Payload normalization and order-event reconciliation are now being implemented.
+
 ## Phase 3 Exit Criteria (Testable One-Time Payments)
 
 The project does not move to recurring payments until all items below pass:
@@ -108,6 +115,19 @@ The project does not move to recurring payments until all items below pass:
 
 See detailed gate contract and checklist in `docs/one-time-payment-gate.md`.
 
+## Current Phase Decision (As Of 2026-06-22)
+
+**Decision:** GO for Phase 5 start.
+
+Current evidence:
+
+1. ✅ Automated suites were green before the phase transition.
+2. ✅ Manual sandbox smoke tests are documented and signed off.
+
+Phase 5 implementation is authorized to proceed using the kickoff checklist.
+
+Use `docs/phase-5-kickoff-checklist.md` to execute the Phase 5 implementation scope.
+
 ## Current Scaffold Status
 
 Current implementation includes:
@@ -119,4 +139,4 @@ Current implementation includes:
 5. A blocks integration shell.
 6. Unit and integration test scaffolding.
 
-It is not production-ready yet. One-time payment release hardening, token capture, recurring MIT, webhooks, and renewal scheduling remain to be implemented.
+It is not production-ready yet. Webhook reconciliation, retry policy automation, merchant documentation, and the remaining Phase 5 QA gates still need to be completed.

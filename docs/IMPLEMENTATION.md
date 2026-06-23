@@ -51,7 +51,7 @@ wc-recurring-mpgs/
 4. ✅ Safe settings model
 5. ✅ Blocks adapter scaffolding
 
-### Phase 2: IN PROGRESS
+### Phase 2: COMPLETE
 
 1. ✅ **COMPLETE** — Callback verification and order finalization
    - Server-to-server verification via verify_order_payment() method
@@ -65,23 +65,41 @@ wc-recurring-mpgs/
    - Order status transitions (pending → processing on success, pending → failed on failure)
    - WooCommerce transaction ID assignment via order->set_transaction_id()
 
-3. ⏳ Implement refund and void requests
+3. ✅ **COMPLETE** — Implement refund and void requests
+  - `process_refund()` implemented with provider API integration
+  - Refund response metadata persisted for auditability
+  - Error mapping returns `WP_Error` with gateway-specific codes
 
-4. ⏳ Add order notes and structured logging (partial: notes added during callback)
+4. ✅ **COMPLETE** — Add order notes and structured logging
+  - Order notes recorded for callback and refund outcomes
+  - Structured logs available through WooCommerce log channel
 
 ### Phase 3
+
+1. Complete a testable one-time payment release gate.
+2. Validate end-to-end hosted checkout success flow in sandbox.
+3. Validate callback failures and customer retry behavior.
+4. Validate merchant operational flow (logs, order notes, admin visibility).
+
+### Phase 4
 
 1. Store reusable token and agreement metadata after the first successful CIT.
 2. Add recurring request builder for version 100 MIT PAY.
 3. Add manual admin MIT charge action.
 4. Add renewal orchestration hooks.
 
-### Phase 4
+### Phase 5
 
 1. Add webhook and notification ingestion.
 2. Add retry policy and duplicate-charge protection.
 3. Add tests for payload builders and response handlers.
 4. Update merchant-facing documentation.
+
+Current kickoff status:
+
+1. Webhook controller scaffold added.
+2. Public ingestion endpoints are registered.
+3. Payload normalization and reconciliation hooks are being implemented.
 
 ## Implementation Details: Phase 2 (Callback & Order Finalization)
 
@@ -222,22 +240,20 @@ wp test run --testcase=WCRMPGS_Test_Callback_Flow
 
 ### What's Still Needed Before Production
 
-❌ Refund processing (Phase 2, Item 3)  
 ❌ Hosted checkout SDK loading and error handling  
 ❌ Recurring payment token storage (Phase 3)  
 ❌ MIT charge requests (Phase 3)  
-❌ Webhook ingestion (Phase 4)  
+❌ Webhook ingestion (Phase 5)  
 ❌ Comprehensive merchant documentation  
 
 ### Next Priority
 
-**Phase 2, Item 3: Refund Processing**
-- Implement process_refund() method
-- Add provider refund API call
-- Handle partial refunds
-- Add refund notes to order
+**Phase 3: One-Time Payment Gate Signoff**
+- Complete and document manual sandbox smoke checks
+- Record explicit GO/NO-GO decision for recurring implementation
+- Keep automated unit/integration suites green before feature expansion
 
-**Estimated scope:** 50-100 lines of PHP code + 5-10 test cases
+**Estimated scope:** Documentation and sandbox validation signoff
 
 ## Known Limitations
 

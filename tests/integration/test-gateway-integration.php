@@ -49,6 +49,18 @@ class WCRMPGS_Test_Gateway_Integration extends WP_UnitTestCase {
             require_once dirname( __DIR__, 2 ) . '/includes/class-wcrmpgs-hosted-checkout-service.php';
         }
 
+        if ( ! class_exists( 'WCRMPGS_Recurring_Contract' ) ) {
+            require_once dirname( __DIR__, 2 ) . '/includes/class-wcrmpgs-recurring-contract.php';
+        }
+
+        if ( ! class_exists( 'WCRMPGS_Recurring_Service' ) ) {
+            require_once dirname( __DIR__, 2 ) . '/includes/class-wcrmpgs-recurring-service.php';
+        }
+
+        if ( ! class_exists( 'WCRMPGS_Webhook_Controller' ) ) {
+            require_once dirname( __DIR__, 2 ) . '/includes/class-wcrmpgs-webhook-controller.php';
+        }
+
         if ( ! class_exists( 'WCRMPGS_Gateway' ) ) {
             require_once dirname( __DIR__, 2 ) . '/includes/class-wcrmpgs-gateway.php';
         }
@@ -68,6 +80,7 @@ class WCRMPGS_Test_Gateway_Integration extends WP_UnitTestCase {
                 'merchant_address1'       => 'Address line 1',
                 'merchant_address2'       => 'Address line 2',
                 'debug_mode'              => 'no',
+                'recurring_enabled'       => 'yes',
             )
         );
 
@@ -138,7 +151,7 @@ class WCRMPGS_Test_Gateway_Integration extends WP_UnitTestCase {
         $result = $this->gateway->process_payment( $this->order->get_id() );
 
         $this->assertSame( 'success', $result['result'] );
-        $this->assertStringContainsString( 'sessionId=session-123', $result['redirect'] );
+        $this->assertStringContainsString( 'order-pay=' . $this->order->get_id(), $result['redirect'] );
 
         $order = wc_get_order( $this->order->get_id() );
         $this->assertSame( 'indicator-123', $order->get_meta( '_wcrmpgs_success_indicator', true ) );
@@ -289,6 +302,56 @@ class WCRMPGS_Test_Gateway_Integration extends WP_UnitTestCase {
         $this->assertNotEmpty( $order->get_meta( '_wcrmpgs_callback_payload', true ) );
     }
 
+    public function test_finalize_callback_result_persists_recurring_contract_meta_on_success(): void {
+        $this->order->update_meta_data( '_wcrmpgs_success_indicator', 'expected-indicator-3' );
+        $this->order->save();
+
+        $verification = array(
+            'result'          => 'SUCCESS',
+            'resultIndicator' => 'expected-indicator-3',
+            'transaction'     => array(
+                'id' => 'txn-success-102',
+            ),
+            'sourceOfFunds'   => array(
+                'provided' => array(
+                    'card' => array(
+                        'token' => 'tok_test_102',
+                    ),
+                ),
+            ),
+            'agreement'       => array(
+                'id'                         => 'agree-test-102',
+                'type'                       => 'MIT',
+                'source'                     => 'MERCHANT',
+                'numberOfPayments'           => 12,
+                'amountVariability'          => 'FIXED',
+                'expiryDate'                 => '2028-12-31',
+                'paymentFrequency'           => 'MONTHLY',
+                'minimumDaysBetweenPayments' => 28,
+            ),
+        );
+
+        $result = $this->invoke_protected_method(
+            $this->gateway,
+            'finalize_callback_result',
+            array( $this->order, $verification, 'expected-indicator-3' )
+        );
+
+        $this->assertTrue( $result['success'] );
+
+        $order = wc_get_order( $this->order->get_id() );
+        $this->assertSame( 'tok_test_102', $order->get_meta( WCRMPGS_Recurring_Contract::META_TOKEN, true ) );
+        $this->assertSame( 'agree-test-102', $order->get_meta( WCRMPGS_Recurring_Contract::META_AGREEMENT_ID, true ) );
+        $this->assertSame( 'MIT', $order->get_meta( WCRMPGS_Recurring_Contract::META_AGREEMENT_TYPE, true ) );
+        $this->assertSame( 'MERCHANT', $order->get_meta( WCRMPGS_Recurring_Contract::META_AGREEMENT_SOURCE, true ) );
+        $this->assertSame( '12', $order->get_meta( WCRMPGS_Recurring_Contract::META_AGREEMENT_NUMBER_OF_PAYMENTS, true ) );
+        $this->assertSame( 'FIXED', $order->get_meta( WCRMPGS_Recurring_Contract::META_AGREEMENT_AMOUNT_VARIABILITY, true ) );
+        $this->assertSame( '2028-12-31', $order->get_meta( WCRMPGS_Recurring_Contract::META_AGREEMENT_EXPIRY_DATE, true ) );
+        $this->assertSame( 'MONTHLY', $order->get_meta( WCRMPGS_Recurring_Contract::META_AGREEMENT_PAYMENT_FREQUENCY, true ) );
+        $this->assertSame( '28', $order->get_meta( WCRMPGS_Recurring_Contract::META_AGREEMENT_MIN_DAYS_BETWEEN_PAYMENTS, true ) );
+        $this->assertNotEmpty( $order->get_meta( WCRMPGS_Recurring_Contract::META_CAPTURED_AT, true ) );
+    }
+
     public function test_finalize_callback_result_marks_order_failed_on_indicator_mismatch(): void {
         $this->order->update_meta_data( '_wcrmpgs_success_indicator', 'expected-indicator-2' );
         $this->order->save();
@@ -318,6 +381,324 @@ class WCRMPGS_Test_Gateway_Integration extends WP_UnitTestCase {
         $this->assertSame( 'different-indicator', $order->get_meta( '_wcrmpgs_result_indicator', true ) );
         $this->assertSame( 'SUCCESS', $order->get_meta( '_wcrmpgs_result', true ) );
         $this->assertNotEmpty( $order->get_meta( '_wcrmpgs_callback_payload', true ) );
+    }
+
+    public function test_process_manual_mit_charge_success_persists_attempt_meta(): void {
+        $this->order->update_meta_data( WCRMPGS_Recurring_Contract::META_TOKEN, 'tok-manual-1' );
+        $this->order->update_meta_data( WCRMPGS_Recurring_Contract::META_AGREEMENT_ID, 'agree-manual-1' );
+        $this->order->update_meta_data( WCRMPGS_Recurring_Contract::META_AGREEMENT_TYPE, 'RECURRING' );
+        $this->order->update_meta_data( WCRMPGS_Recurring_Contract::META_AGREEMENT_SOURCE, 'MERCHANT_INITIATED' );
+        $this->order->update_meta_data( WCRMPGS_Recurring_Contract::META_AGREEMENT_NUMBER_OF_PAYMENTS, '5' );
+        $this->order->update_meta_data( WCRMPGS_Recurring_Contract::META_AGREEMENT_AMOUNT_VARIABILITY, 'FIXED' );
+        $this->order->update_meta_data( WCRMPGS_Recurring_Contract::META_AGREEMENT_EXPIRY_DATE, '2027-11-30' );
+        $this->order->update_meta_data( WCRMPGS_Recurring_Contract::META_AGREEMENT_PAYMENT_FREQUENCY, 'MONTHLY' );
+        $this->order->update_meta_data( WCRMPGS_Recurring_Contract::META_AGREEMENT_MIN_DAYS_BETWEEN_PAYMENTS, '28' );
+        $this->order->set_transaction_id( 'cit-txn-001' );
+        $this->order->save();
+
+        add_filter(
+            'pre_http_request',
+            function ( $preempt, $parsed_args, $url ) {
+                if ( false !== strpos( $url, '/transaction/mit-manual-' ) ) {
+                    return array(
+                        'headers'  => array(),
+                        'body'     => wp_json_encode(
+                            array(
+                                'result'      => 'SUCCESS',
+                                'response'    => array(
+                                    'gatewayCode' => 'APPROVED',
+                                ),
+                                'transaction' => array(
+                                    'id' => 'mit-txn-success-301',
+                                ),
+                            )
+                        ),
+                        'response' => array( 'code' => 200, 'message' => 'OK' ),
+                    );
+                }
+
+                return $preempt;
+            },
+            10,
+            3
+        );
+
+        $result = $this->invoke_protected_method(
+            $this->gateway,
+            'process_manual_mit_charge',
+            array( $this->order )
+        );
+
+        $this->assertIsArray( $result );
+        $this->assertTrue( $result['success'] );
+
+        $order = wc_get_order( $this->order->get_id() );
+        $this->assertSame( 'mit-txn-success-301', $order->get_meta( '_wcrmpgs_last_mit_transaction_id', true ) );
+        $this->assertNotEmpty( $order->get_meta( '_wcrmpgs_last_mit_attempted_at', true ) );
+        $this->assertNotEmpty( $order->get_meta( '_wcrmpgs_last_mit_request', true ) );
+        $this->assertNotEmpty( $order->get_meta( '_wcrmpgs_last_mit_response', true ) );
+
+        $last_request = json_decode( $order->get_meta( '_wcrmpgs_last_mit_request', true ), true );
+        $this->assertIsArray( $last_request );
+        $this->assertSame( 'MERCHANT', $last_request['transaction']['source'] );
+        $this->assertSame( 5, $last_request['agreement']['numberOfPayments'] );
+        $this->assertSame( 'FIXED', $last_request['agreement']['amountVariability'] );
+        $this->assertSame( '2027-11-30', $last_request['agreement']['expiryDate'] );
+        $this->assertSame( 'MONTHLY', $last_request['agreement']['paymentFrequency'] );
+        $this->assertSame( 28, $last_request['agreement']['minimumDaysBetweenPayments'] );
+    }
+
+    public function test_process_manual_mit_charge_returns_error_when_token_missing(): void {
+        $this->order->delete_meta_data( WCRMPGS_Recurring_Contract::META_TOKEN );
+        $this->order->save();
+
+        $result = $this->invoke_protected_method(
+            $this->gateway,
+            'process_manual_mit_charge',
+            array( $this->order )
+        );
+
+        $this->assertInstanceOf( WP_Error::class, $result );
+        $this->assertSame( 'wcrmpgs_manual_mit_missing_token', $result->get_error_code() );
+    }
+
+    public function test_validate_manual_mit_admin_request_rejects_invalid_nonce(): void {
+        $admin_id = self::factory()->user->create( array( 'role' => 'administrator' ) );
+        wp_set_current_user( $admin_id );
+
+        $_REQUEST['_wpnonce'] = 'invalid-nonce';
+
+        $result = $this->invoke_protected_method(
+            $this->gateway,
+            'validate_manual_mit_admin_request',
+            array( $this->order )
+        );
+
+        $this->assertInstanceOf( WP_Error::class, $result );
+        $this->assertSame( 'wcrmpgs_manual_mit_invalid_nonce', $result->get_error_code() );
+
+        wp_set_current_user( 0 );
+    }
+
+    public function test_process_renewal_mit_charge_success_persists_renewal_meta(): void {
+        $this->order->update_meta_data( WCRMPGS_Recurring_Contract::META_TOKEN, 'tok-renewal-1' );
+        $this->order->update_meta_data( WCRMPGS_Recurring_Contract::META_AGREEMENT_ID, 'agree-renewal-1' );
+        $this->order->update_meta_data( WCRMPGS_Recurring_Contract::META_AGREEMENT_NUMBER_OF_PAYMENTS, '10' );
+        $this->order->update_meta_data( WCRMPGS_Recurring_Contract::META_AGREEMENT_AMOUNT_VARIABILITY, 'FIXED' );
+        $this->order->update_meta_data( WCRMPGS_Recurring_Contract::META_AGREEMENT_EXPIRY_DATE, '2028-10-31' );
+        $this->order->update_meta_data( WCRMPGS_Recurring_Contract::META_AGREEMENT_PAYMENT_FREQUENCY, 'MONTHLY' );
+        $this->order->update_meta_data( WCRMPGS_Recurring_Contract::META_AGREEMENT_MIN_DAYS_BETWEEN_PAYMENTS, '28' );
+        $this->order->set_transaction_id( 'cit-renewal-001' );
+        $this->order->save();
+
+        add_filter(
+            'pre_http_request',
+            function ( $preempt, $parsed_args, $url ) {
+                if ( false !== strpos( $url, '/transaction/mit-renewal-' ) ) {
+                    return array(
+                        'headers'  => array(),
+                        'body'     => wp_json_encode(
+                            array(
+                                'result'      => 'SUCCESS',
+                                'response'    => array(
+                                    'gatewayCode' => 'APPROVED',
+                                ),
+                                'transaction' => array(
+                                    'id' => 'mit-renewal-success-401',
+                                ),
+                            )
+                        ),
+                        'response' => array( 'code' => 200, 'message' => 'OK' ),
+                    );
+                }
+
+                return $preempt;
+            },
+            10,
+            3
+        );
+
+        $result = $this->invoke_protected_method(
+            $this->gateway,
+            'process_renewal_mit_charge',
+            array( $this->order, 50.00 )
+        );
+
+        $this->assertIsArray( $result );
+        $this->assertTrue( $result['success'] );
+
+        $order = wc_get_order( $this->order->get_id() );
+        $this->assertSame( 'success', $order->get_meta( '_wcrmpgs_renewal_attempt_result', true ) );
+        $this->assertSame( 'mit-renewal-success-401', $order->get_meta( '_wcrmpgs_renewal_attempt_transaction_id', true ) );
+        $this->assertNotEmpty( $order->get_meta( '_wcrmpgs_renewal_attempted_at', true ) );
+        $this->assertNotEmpty( $order->get_meta( '_wcrmpgs_renewal_attempt_request', true ) );
+        $this->assertNotEmpty( $order->get_meta( '_wcrmpgs_renewal_attempt_response', true ) );
+
+        $attempt_request = json_decode( $order->get_meta( '_wcrmpgs_renewal_attempt_request', true ), true );
+        $this->assertIsArray( $attempt_request );
+        $this->assertSame( 'MERCHANT', $attempt_request['transaction']['source'] );
+        $this->assertSame( 10, $attempt_request['agreement']['numberOfPayments'] );
+        $this->assertSame( 'FIXED', $attempt_request['agreement']['amountVariability'] );
+        $this->assertSame( '2028-10-31', $attempt_request['agreement']['expiryDate'] );
+        $this->assertSame( 'MONTHLY', $attempt_request['agreement']['paymentFrequency'] );
+        $this->assertSame( 28, $attempt_request['agreement']['minimumDaysBetweenPayments'] );
+    }
+
+    public function test_process_renewal_mit_charge_allows_retry_after_failure(): void {
+        $this->order->update_meta_data( WCRMPGS_Recurring_Contract::META_TOKEN, 'tok-renewal-retry' );
+        $this->order->set_transaction_id( 'cit-renewal-retry-001' );
+        $this->order->save();
+
+        $attempt = 0;
+        add_filter(
+            'pre_http_request',
+            function ( $preempt, $parsed_args, $url ) use ( &$attempt ) {
+                if ( false !== strpos( $url, '/transaction/mit-renewal-' ) ) {
+                    $attempt++;
+
+                    if ( 1 === $attempt ) {
+                        return array(
+                            'headers'  => array(),
+                            'body'     => wp_json_encode(
+                                array(
+                                    'result'   => 'FAILURE',
+                                    'response' => array(
+                                        'gatewayCode' => 'DECLINED',
+                                    ),
+                                    'error'    => array(
+                                        'explanation' => 'Declined on first attempt',
+                                    ),
+                                )
+                            ),
+                            'response' => array( 'code' => 200, 'message' => 'OK' ),
+                        );
+                    }
+
+                    return array(
+                        'headers'  => array(),
+                        'body'     => wp_json_encode(
+                            array(
+                                'result'      => 'SUCCESS',
+                                'response'    => array(
+                                    'gatewayCode' => 'APPROVED',
+                                ),
+                                'transaction' => array(
+                                    'id' => 'mit-renewal-retry-402',
+                                ),
+                            )
+                        ),
+                        'response' => array( 'code' => 200, 'message' => 'OK' ),
+                    );
+                }
+
+                return $preempt;
+            },
+            10,
+            3
+        );
+
+        $first_result = $this->invoke_protected_method(
+            $this->gateway,
+            'process_renewal_mit_charge',
+            array( $this->order, 50.00 )
+        );
+        $this->assertInstanceOf( WP_Error::class, $first_result );
+
+        $second_result = $this->invoke_protected_method(
+            $this->gateway,
+            'process_renewal_mit_charge',
+            array( $this->order, 50.00 )
+        );
+
+        $this->assertIsArray( $second_result );
+        $this->assertTrue( $second_result['success'] );
+
+        $order = wc_get_order( $this->order->get_id() );
+        $this->assertSame( 'success', $order->get_meta( '_wcrmpgs_renewal_attempt_result', true ) );
+    }
+
+    public function test_process_renewal_mit_charge_blocks_duplicate_after_success(): void {
+        $this->order->update_meta_data( WCRMPGS_Recurring_Contract::META_TOKEN, 'tok-renewal-dup' );
+        $this->order->set_transaction_id( 'cit-renewal-dup-001' );
+        $this->order->save();
+
+        add_filter(
+            'pre_http_request',
+            function ( $preempt, $parsed_args, $url ) {
+                if ( false !== strpos( $url, '/transaction/mit-renewal-' ) ) {
+                    return array(
+                        'headers'  => array(),
+                        'body'     => wp_json_encode(
+                            array(
+                                'result'      => 'SUCCESS',
+                                'response'    => array(
+                                    'gatewayCode' => 'APPROVED',
+                                ),
+                                'transaction' => array(
+                                    'id' => 'mit-renewal-dup-403',
+                                ),
+                            )
+                        ),
+                        'response' => array( 'code' => 200, 'message' => 'OK' ),
+                    );
+                }
+
+                return $preempt;
+            },
+            10,
+            3
+        );
+
+        $first_result = $this->invoke_protected_method(
+            $this->gateway,
+            'process_renewal_mit_charge',
+            array( $this->order, 50.00 )
+        );
+        $this->assertIsArray( $first_result );
+        $this->assertTrue( $first_result['success'] );
+
+        $second_result = $this->invoke_protected_method(
+            $this->gateway,
+            'process_renewal_mit_charge',
+            array( $this->order, 50.00 )
+        );
+
+        $this->assertInstanceOf( WP_Error::class, $second_result );
+        $this->assertSame( 'wcrmpgs_renewal_duplicate_attempt', $second_result->get_error_code() );
+    }
+
+    public function test_webhook_controller_ingests_success_and_ignores_duplicate_event(): void {
+        $controller = new WCRMPGS_Webhook_Controller();
+
+        $payload = array(
+            'eventId'   => 'evt-webhook-001',
+            'eventType' => 'PAYMENT.CAPTURED',
+            'result'    => 'SUCCESS',
+            'order'     => array(
+                'id' => $this->order->get_id(),
+            ),
+            'transaction' => array(
+                'id' => 'txn-webhook-001',
+            ),
+        );
+
+        $first_result = $controller->ingest_payload( $payload );
+
+        $this->assertTrue( $first_result['accepted'] );
+        $this->assertSame( 'evt-webhook-001', $first_result['event_id'] );
+
+        $order = wc_get_order( $this->order->get_id() );
+        $this->assertTrue( $order->is_paid() );
+        $this->assertSame( 'txn-webhook-001', $order->get_transaction_id() );
+
+        $event_ids = json_decode( $order->get_meta( WCRMPGS_Webhook_Controller::META_WEBHOOK_EVENT_IDS, true ), true );
+        $this->assertIsArray( $event_ids );
+        $this->assertContains( 'evt-webhook-001', $event_ids );
+
+        $duplicate_result = $controller->ingest_payload( $payload );
+
+        $this->assertTrue( $duplicate_result['accepted'] );
+        $this->assertSame( 'Duplicate webhook event ignored.', $duplicate_result['message'] );
     }
 
     /**

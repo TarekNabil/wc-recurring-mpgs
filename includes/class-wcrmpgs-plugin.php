@@ -48,7 +48,12 @@ final class WCRMPGS_Plugin {
 
         require_once WCRMPGS_PLUGIN_DIR . 'includes/class-wcrmpgs-api-client.php';
         require_once WCRMPGS_PLUGIN_DIR . 'includes/class-wcrmpgs-hosted-checkout-service.php';
+        require_once WCRMPGS_PLUGIN_DIR . 'includes/class-wcrmpgs-recurring-contract.php';
+        require_once WCRMPGS_PLUGIN_DIR . 'includes/class-wcrmpgs-recurring-service.php';
+        require_once WCRMPGS_PLUGIN_DIR . 'includes/class-wcrmpgs-webhook-controller.php';
         require_once WCRMPGS_PLUGIN_DIR . 'includes/class-wcrmpgs-gateway.php';
+
+        new WCRMPGS_Webhook_Controller();
 
         add_filter( 'woocommerce_payment_gateways', array( $this, 'register_gateway' ) );
         add_action( 'woocommerce_blocks_loaded', array( $this, 'register_blocks_support' ) );

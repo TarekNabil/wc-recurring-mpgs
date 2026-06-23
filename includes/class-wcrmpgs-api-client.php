@@ -79,6 +79,25 @@ class WCRMPGS_Api_Client {
     }
 
     /**
+     * Perform a JSON PUT request.
+     *
+     * @param string $url Endpoint URL.
+     * @param array  $payload Request payload.
+     * @return array|WP_Error
+     */
+    public function put( $url, array $payload ) {
+        return wp_remote_request(
+            $url,
+            array(
+                'method'  => 'PUT',
+                'headers' => $this->build_json_headers(),
+                'body'    => wp_json_encode( $payload ),
+                'timeout' => 45,
+            )
+        );
+    }
+
+    /**
      * Perform a JSON GET request.
      *
      * @param string $url Endpoint URL.

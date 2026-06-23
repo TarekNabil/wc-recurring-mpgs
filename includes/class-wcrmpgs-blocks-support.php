@@ -25,12 +25,23 @@ final class WCRMPGS_Blocks_Support extends AbstractPaymentMethodType {
     protected $name = 'merchant_payments';
 
     /**
+     * Gateway instance.
+     *
+     * @var WCRMPGS_Gateway|null
+     */
+    private $gateway = null;
+
+    /**
      * Initialize gateway settings.
      *
      * @return void
      */
     public function initialize() {
         $this->settings = get_option( 'woocommerce_merchant_payments_settings', array() );
+
+        if ( class_exists( 'WCRMPGS_Gateway' ) ) {
+            $this->gateway = new WCRMPGS_Gateway();
+        }
     }
 
     /**
@@ -39,7 +50,24 @@ final class WCRMPGS_Blocks_Support extends AbstractPaymentMethodType {
      * @return bool
      */
     public function is_active() {
-        return ! empty( $this->settings['enabled'] ) && 'yes' === $this->settings['enabled'];
+        return ! empty( $this->settings['enabled'] ) && 'yes' === $this->settings['enabled'] && $this->gateway instanceof WCRMPGS_Gateway;
+    }
+
+    /**
+     * Return gateway-supported features for Checkout Blocks.
+     *
+     * @return array
+     */
+    public function get_supported_features() {
+        if ( ! $this->gateway instanceof WCRMPGS_Gateway ) {
+            return array( 'products' );
+        }
+
+        if ( ! is_array( $this->gateway->supports ) ) {
+            return array( 'products' );
+        }
+
+        return array_values( $this->gateway->supports );
     }
 
     /**
