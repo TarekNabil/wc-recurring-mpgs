@@ -17,5 +17,4 @@
 Thumbs.db
 # Development files
 /pma-docker.sh
-/.distignore
 /.ignore
