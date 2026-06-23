@@ -32,13 +32,15 @@ class WCRMPGS_Test_Recurring_Service_Unit extends TestCase {
 
         $this->assertIsArray( $payload );
         $this->assertSame( 'PAY', $payload['apiOperation'] );
-        $this->assertSame( '77', $payload['order']['id'] );
         $this->assertSame( '25.50', $payload['order']['amount'] );
         $this->assertSame( 'USD', $payload['order']['currency'] );
-        $this->assertSame( 'mit-merchant-001', $payload['transaction']['reference'] );
+        $this->assertArrayNotHasKey( 'id', $payload['order'] );
+        $this->assertArrayNotHasKey( 'reference', $payload['order'] );
         $this->assertSame( 'MERCHANT', $payload['transaction']['source'] );
+        $this->assertArrayNotHasKey( 'reference', $payload['transaction'] );
         $this->assertSame( 'CARD', $payload['sourceOfFunds']['type'] );
         $this->assertSame( 'tok_77', $payload['sourceOfFunds']['token'] );
+        $this->assertArrayNotHasKey( 'initiator', $payload );
         $this->assertSame( 'agree-77', $payload['agreement']['id'] );
         $this->assertSame( 'RECURRING', $payload['agreement']['type'] );
         $this->assertSame( 5, $payload['agreement']['numberOfPayments'] );

@@ -537,6 +537,11 @@ class WCRMPGS_Test_Gateway_Integration extends WP_UnitTestCase {
         $attempt_request = json_decode( $order->get_meta( '_wcrmpgs_renewal_attempt_request', true ), true );
         $this->assertIsArray( $attempt_request );
         $this->assertSame( 'MERCHANT', $attempt_request['transaction']['source'] );
+        $this->assertArrayNotHasKey( 'initiator', $attempt_request );
+        $this->assertArrayNotHasKey( 'session', $attempt_request );
+        $this->assertArrayNotHasKey( 'id', $attempt_request['order'] );
+        $this->assertArrayNotHasKey( 'reference', $attempt_request['order'] );
+        $this->assertArrayNotHasKey( 'reference', $attempt_request['transaction'] );
         $this->assertSame( 10, $attempt_request['agreement']['numberOfPayments'] );
         $this->assertSame( 'FIXED', $attempt_request['agreement']['amountVariability'] );
         $this->assertSame( '2028-10-31', $attempt_request['agreement']['expiryDate'] );
@@ -665,6 +670,70 @@ class WCRMPGS_Test_Gateway_Integration extends WP_UnitTestCase {
 
         $this->assertInstanceOf( WP_Error::class, $second_result );
         $this->assertSame( 'wcrmpgs_renewal_duplicate_attempt', $second_result->get_error_code() );
+    }
+
+    public function test_process_scheduled_subscription_payment_ignores_duplicate_trigger_without_failure_note(): void {
+        $this->order->update_meta_data( WCRMPGS_Recurring_Contract::META_TOKEN, 'tok-renewal-scheduled-dup' );
+        $this->order->set_transaction_id( 'cit-renewal-scheduled-dup-001' );
+        $this->order->save();
+
+        add_filter(
+            'pre_http_request',
+            function ( $preempt, $parsed_args, $url ) {
+                if ( false !== strpos( $url, '/transaction/mit-renewal-' ) ) {
+                    return array(
+                        'headers'  => array(),
+                        'body'     => wp_json_encode(
+                            array(
+                                'result'      => 'SUCCESS',
+                                'response'    => array(
+                                    'gatewayCode' => 'APPROVED',
+                                ),
+                                'transaction' => array(
+                                    'id' => 'mit-renewal-scheduled-dup-404',
+                                ),
+                            )
+                        ),
+                        'response' => array( 'code' => 200, 'message' => 'OK' ),
+                    );
+                }
+
+                return $preempt;
+            },
+            10,
+            3
+        );
+
+        $this->gateway->process_scheduled_subscription_payment( 50.00, $this->order );
+        $this->gateway->process_scheduled_subscription_payment( 50.00, $this->order );
+
+        $order = wc_get_order( $this->order->get_id() );
+        $this->assertTrue( $order->is_paid() );
+        $this->assertNotSame( 'failed', $order->get_status() );
+
+        $notes = wc_get_order_notes(
+            array(
+                'order_id' => $order->get_id(),
+            )
+        );
+
+        $failure_duplicate_note_found = false;
+        $success_note_count           = 0;
+
+        foreach ( $notes as $note ) {
+            $content = isset( $note->content ) ? (string) $note->content : '';
+
+            if ( false !== strpos( $content, 'Renewal MIT charge failed: Renewal charge already succeeded for this renewal order.' ) ) {
+                $failure_duplicate_note_found = true;
+            }
+
+            if ( false !== strpos( $content, 'Renewal MIT charge successful. Transaction ID:' ) ) {
+                $success_note_count++;
+            }
+        }
+
+        $this->assertFalse( $failure_duplicate_note_found );
+        $this->assertSame( 1, $success_note_count );
     }
 
     public function test_webhook_controller_ingests_success_and_ignores_duplicate_event(): void {

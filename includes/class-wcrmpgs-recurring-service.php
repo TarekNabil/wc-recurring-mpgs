@@ -60,28 +60,20 @@ class WCRMPGS_Recurring_Service {
             return $validation;
         }
 
-        $order_id                = (string) $input['order_id'];
-        $merchant_transaction_id = ! empty( $input['merchant_transaction_id'] ) ? (string) $input['merchant_transaction_id'] : 'mit-' . $order_id . '-' . gmdate( 'YmdHis' );
         $agreement_type          = ! empty( $input['agreement_type'] ) ? (string) $input['agreement_type'] : 'RECURRING';
 
         $payload = array(
             'apiOperation' => 'PAY',
             'order'        => array(
-                'id'        => $order_id,
-                'amount'    => number_format( (float) $input['amount'], 2, '.', '' ),
-                'currency'  => strtoupper( (string) $input['currency'] ),
-                'reference' => ! empty( $input['order_reference'] ) ? (string) $input['order_reference'] : $order_id,
+                'amount'   => number_format( (float) $input['amount'], 2, '.', '' ),
+                'currency' => strtoupper( (string) $input['currency'] ),
             ),
             'transaction'  => array(
-                'reference' => $merchant_transaction_id,
-                'source'    => 'MERCHANT',
+                'source' => 'MERCHANT',
             ),
             'sourceOfFunds' => array(
                 'type'  => 'CARD',
                 'token' => (string) $input['token'],
-            ),
-            'initiator'    => array(
-                'type' => 'MERCHANT',
             ),
         );
 
