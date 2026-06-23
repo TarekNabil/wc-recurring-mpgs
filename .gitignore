@@ -15,3 +15,7 @@
 # OS/editor noise
 .DS_Store
 Thumbs.db
+# Development files
+/pma-docker.sh
+/.distignore
+/.ignore

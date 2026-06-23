@@ -78,6 +78,9 @@ class WCRMPGS_Recurring_Contract {
                 array( 'sourceOfFunds', 'token' ),
                 array( 'sourceOfFunds', 'provided', 'card', 'token' ),
                 array( 'sourceOfFunds', 'provided', 'card', 'storedOnFile', 'id' ),
+                array( 'sourceOfFunds', 'provided', 'card', 'storedOnFile', 'token' ),
+                array( 'sourceOfFunds', 'provided', 'card', 'storedOnFileId' ),
+                array( 'sourceOfFunds', 'provided', 'card', 'id' ),
                 array( 'token' ),
             )
         );
@@ -89,6 +92,8 @@ class WCRMPGS_Recurring_Contract {
                 array( 'agreement', 'reference' ),
                 array( 'sourceOfFunds', 'provided', 'card', 'agreement', 'id' ),
                 array( 'sourceOfFunds', 'provided', 'card', 'storedOnFile', 'agreementId' ),
+                array( 'sourceOfFunds', 'provided', 'card', 'storedOnFile', 'agreement', 'id' ),
+                array( 'sourceOfFunds', 'provided', 'card', 'storedOnFile', 'id' ),
             )
         );
 

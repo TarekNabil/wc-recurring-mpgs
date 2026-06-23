@@ -158,6 +158,7 @@ class WCRMPGS_Webhook_Controller {
         $order->update_meta_data( self::META_WEBHOOK_RECEIVED_AT, gmdate( 'Y-m-d H:i:s' ) );
         $order->delete_meta_data( self::META_WEBHOOK_LAST_ERROR );
         $order->delete_meta_data( self::META_WEBHOOK_RETRY_AFTER );
+        $this->persist_recurring_contract_data( $order, $payload );
         $this->remember_event( $order, $normalized['event_id'] );
 
         $result_code = strtoupper( $normalized['result'] );
@@ -473,6 +474,71 @@ class WCRMPGS_Webhook_Controller {
         );
 
         return 'wcrmpgs-webhook-' . md5( implode( '|', $parts ) );
+    }
+
+    /**
+     * Persist recurring token/agreement metadata when present in webhook payload.
+     *
+     * @param WC_Order $order Order object.
+     * @param array    $payload Raw provider payload.
+     * @return void
+     */
+    protected function persist_recurring_contract_data( WC_Order $order, array $payload ) {
+        if ( ! class_exists( 'WCRMPGS_Recurring_Contract' ) ) {
+            return;
+        }
+
+        $contract = new WCRMPGS_Recurring_Contract();
+        $meta_map = $contract->build_meta_map(
+            $contract->extract( $payload ),
+            gmdate( 'Y-m-d H:i:s' )
+        );
+
+        if ( empty( $meta_map ) ) {
+            return;
+        }
+
+        $existing_token = (string) $order->get_meta( WCRMPGS_Recurring_Contract::META_TOKEN, true );
+        foreach ( $meta_map as $meta_key => $meta_value ) {
+            $order->update_meta_data( $meta_key, $meta_value );
+        }
+
+        $captured_token = isset( $meta_map[ WCRMPGS_Recurring_Contract::META_TOKEN ] ) ? (string) $meta_map[ WCRMPGS_Recurring_Contract::META_TOKEN ] : '';
+        if ( '' !== $captured_token && '' === $existing_token ) {
+            $order->add_order_note( __( 'MPGS recurring contract captured from webhook payload for future MIT charges.', 'wc-recurring-mpgs' ) );
+        }
+
+        $this->persist_recurring_contract_on_subscriptions( $order, $meta_map );
+    }
+
+    /**
+     * Mirror recurring contract data to linked subscriptions when available.
+     *
+     * @param WC_Order $order Parent order.
+     * @param array    $meta_map Recurring meta map.
+     * @return void
+     */
+    protected function persist_recurring_contract_on_subscriptions( WC_Order $order, array $meta_map ) {
+        if ( ! function_exists( 'wcs_get_subscriptions_for_order' ) ) {
+            return;
+        }
+
+        $subscriptions = wcs_get_subscriptions_for_order( $order, array( 'order_type' => array( 'parent', 'renewal' ) ) );
+        if ( ! is_array( $subscriptions ) || empty( $subscriptions ) ) {
+            return;
+        }
+
+        foreach ( $subscriptions as $subscription ) {
+            if ( ! is_object( $subscription ) || ! method_exists( $subscription, 'update_meta_data' ) || ! method_exists( $subscription, 'save' ) ) {
+                continue;
+            }
+
+            foreach ( $meta_map as $meta_key => $meta_value ) {
+                $subscription->update_meta_data( $meta_key, $meta_value );
+            }
+
+            $subscription->save();
+        }
     }
 
     /**

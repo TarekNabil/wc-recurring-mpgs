@@ -33,7 +33,7 @@ class WCRMPGS_Gateway extends WC_Payment_Gateway {
     /**
      * Hosted checkout session reuse window (seconds).
      */
-    const CHECKOUT_SESSION_REUSE_TTL = 900;
+    const CHECKOUT_SESSION_REUSE_TTL = 300;
 
     /**
      * Debug logging flag.
@@ -183,9 +183,9 @@ class WCRMPGS_Gateway extends WC_Payment_Gateway {
             'recurring_enabled'     => array(
                 'title'       => __( 'Recurring Payments', 'wc-recurring-mpgs' ),
                 'type'        => 'checkbox',
-                'label'       => __( 'Enable recurring architecture scaffolding', 'wc-recurring-mpgs' ),
-                'default'     => 'no',
-                'description' => __( 'This only enables the new recurring configuration path. Actual MIT charging is not implemented in this first scaffold.', 'wc-recurring-mpgs' ),
+                'label'       => __( 'Enable recurring MIT charges (auto-renewals)', 'wc-recurring-mpgs' ),
+                'default'     => 'yes',
+                'description' => __( 'Required for automatic subscription renewals and manual MIT charges.', 'wc-recurring-mpgs' ),
             ),
         );
     }
@@ -524,6 +524,7 @@ class WCRMPGS_Gateway extends WC_Payment_Gateway {
      */
     public function process_payment( $order_id ) {
         $order = wc_get_order( $order_id );
+        $force_new_session = ! empty( $_GET['wcrmpgs_retry'] );
 
         $this->flow_log( 'process_payment_start', array( 'order_id' => (int) $order_id ) );
 
@@ -545,6 +546,25 @@ class WCRMPGS_Gateway extends WC_Payment_Gateway {
         $existing_session_id = (string) $order->get_meta( '_wcrmpgs_session_id', true );
         $session_created_at = (string) $order->get_meta( '_wcrmpgs_session_created_at', true );
         $session_fresh      = $this->is_checkout_session_fresh( $session_created_at );
+
+        if ( $force_new_session && $existing_session_id ) {
+            $order->delete_meta_data( '_wcrmpgs_session_id' );
+            $order->delete_meta_data( '_wcrmpgs_session_version' );
+            $order->delete_meta_data( '_wcrmpgs_session_created_at' );
+            $order->save();
+
+            $this->flow_log(
+                'process_payment_retry_forced_new_session',
+                array(
+                    'order_id'   => $order->get_id(),
+                    'session_id' => $existing_session_id,
+                )
+            );
+
+            $existing_session_id = '';
+            $session_created_at  = '';
+            $session_fresh       = false;
+        }
 
         if ( $existing_session_id && $order->needs_payment() && $session_fresh ) {
             $this->set_auto_resume_intent( $order->get_id() );
@@ -810,11 +830,6 @@ class WCRMPGS_Gateway extends WC_Payment_Gateway {
             return $actions;
         }
 
-        $token = (string) $order->get_meta( WCRMPGS_Recurring_Contract::META_TOKEN, true );
-        if ( '' === $token ) {
-            return $actions;
-        }
-
         $actions['wcrmpgs_manual_mit_charge'] = __( 'MPGS: Run Manual MIT Charge', 'wc-recurring-mpgs' );
 
         return $actions;
@@ -833,6 +848,7 @@ class WCRMPGS_Gateway extends WC_Payment_Gateway {
             $error_message = $validation->get_error_message();
             $order->add_order_note( sprintf( __( 'Manual MIT charge blocked: %s', 'wc-recurring-mpgs' ), $error_message ) );
             $this->log( 'Manual MIT action blocked for order ' . $order->get_id() . ': ' . $error_message, 'warning' );
+            $this->add_admin_order_error_notice( $error_message );
             return;
         }
 
@@ -842,6 +858,7 @@ class WCRMPGS_Gateway extends WC_Payment_Gateway {
             $error_message = $result->get_error_message();
             $order->add_order_note( sprintf( __( 'Manual MIT charge failed: %s', 'wc-recurring-mpgs' ), $error_message ) );
             $this->log( 'Manual MIT charge failed for order ' . $order->get_id() . ': ' . $error_message, 'error' );
+            $this->add_admin_order_error_notice( $error_message );
             return;
         }
 
@@ -852,6 +869,31 @@ class WCRMPGS_Gateway extends WC_Payment_Gateway {
             )
         );
         $this->log( 'Manual MIT charge successful for order ' . $order->get_id() . '.', 'info' );
+        $this->add_admin_order_success_notice( __( 'Manual MIT charge completed successfully.', 'wc-recurring-mpgs' ) );
+    }
+
+    /**
+     * Add an admin-visible error notice when available.
+     *
+     * @param string $message Notice message.
+     * @return void
+     */
+    protected function add_admin_order_error_notice( $message ) {
+        if ( class_exists( 'WC_Admin_Meta_Boxes' ) ) {
+            WC_Admin_Meta_Boxes::add_error( (string) $message );
+        }
+    }
+
+    /**
+     * Add an admin-visible success notice when available.
+     *
+     * @param string $message Notice message.
+     * @return void
+     */
+    protected function add_admin_order_success_notice( $message ) {
+        if ( class_exists( 'WC_Admin_Meta_Boxes' ) ) {
+            WC_Admin_Meta_Boxes::add_message( (string) $message );
+        }
     }
 
     /**
@@ -890,8 +932,8 @@ class WCRMPGS_Gateway extends WC_Payment_Gateway {
             return new WP_Error( 'wcrmpgs_manual_mit_missing_credentials', __( 'Gateway credentials are incomplete.', 'wc-recurring-mpgs' ) );
         }
 
-        if ( 'yes' !== $this->get_option( 'recurring_enabled', 'no' ) ) {
-            return new WP_Error( 'wcrmpgs_manual_mit_not_enabled', __( 'Recurring payments are not enabled in gateway settings.', 'wc-recurring-mpgs' ) );
+        if ( 'yes' !== $this->get_option( 'recurring_enabled', 'yes' ) ) {
+            return new WP_Error( 'wcrmpgs_manual_mit_not_enabled', __( 'Recurring MIT charges are disabled. Enable "Recurring Payments" in gateway settings.', 'wc-recurring-mpgs' ) );
         }
 
         $token = (string) $order->get_meta( WCRMPGS_Recurring_Contract::META_TOKEN, true );
@@ -1028,8 +1070,8 @@ class WCRMPGS_Gateway extends WC_Payment_Gateway {
             return new WP_Error( 'wcrmpgs_renewal_missing_credentials', __( 'Gateway credentials are incomplete.', 'wc-recurring-mpgs' ) );
         }
 
-        if ( 'yes' !== $this->get_option( 'recurring_enabled', 'no' ) ) {
-            return new WP_Error( 'wcrmpgs_renewal_not_enabled', __( 'Recurring payments are not enabled in gateway settings.', 'wc-recurring-mpgs' ) );
+        if ( 'yes' !== $this->get_option( 'recurring_enabled', 'yes' ) ) {
+            return new WP_Error( 'wcrmpgs_renewal_not_enabled', __( 'Recurring MIT charges are disabled. Enable "Recurring Payments" in gateway settings.', 'wc-recurring-mpgs' ) );
         }
 
         $amount = (float) $amount_to_charge;
@@ -1471,6 +1513,9 @@ class WCRMPGS_Gateway extends WC_Payment_Gateway {
         );
 
         if ( empty( $meta_map ) ) {
+            $order->add_order_note( __( 'MPGS recurring contract was not captured. Provider verification payload did not include a reusable token.', 'wc-recurring-mpgs' ) );
+            $this->log( 'Recurring contract not captured for order ' . $order->get_id() . ': token/contract fields missing in verification payload.', 'warning' );
+            $order->save();
             return;
         }
 
