@@ -2,10 +2,11 @@
 
 /**
  * Plugin Name: WC Recurring MPGS
- * Plugin URI: https://example.com/
+ * Plugin URI: https://tareknabil.net/wc-recurring-mpgs
  * Description: WC Recurring MPGS (MasterCard Payment Gateway Services for WooCommerce) with hosted checkout and recurring payments foundation.
  * Version: 0.1.0
- * Author: Tarek
+ * Author: Tarek Nabil
+ * Author URI: https://tareknabil.net
  * License: GPL v2 or later
  * License URI: https://www.gnu.org/licenses/gpl-2.0.html
  * Text Domain: wc-recurring-mpgs
